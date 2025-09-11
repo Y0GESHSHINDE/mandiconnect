@@ -16,8 +16,7 @@ import java.util.List;
 public class Farmer {
 
     @Id
-    private String id;  // MongoDB will generate _id automatically
-
+    private String id;  // MongoDB _id
 
     @Field("Name")
     private String name;
@@ -27,6 +26,15 @@ public class Farmer {
 
     @Field("Email")
     private String email;
+
+    @Field("Password")
+    private String password;  // bcrypt hashed password
+
+    @Field("Role")
+    private String role = "FARMER"; // default role
+
+    @Field("isVerified")
+    private boolean isVerified = false; // for email verification
 
     @Field("Farmer Address")
     private FarmerAddress farmerAddress;
@@ -49,7 +57,6 @@ public class Farmer {
         private String country;
     }
 
-
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -63,7 +70,7 @@ public class Farmer {
         @Field("IrrigationType")
         private String irrigationType;
 
-        @Field("soilType")
+        @Field("SoilType")
         private String soilType;
     }
 }
