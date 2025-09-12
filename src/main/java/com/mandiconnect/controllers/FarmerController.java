@@ -6,6 +6,7 @@ import com.mandiconnect.models.Farmer;
 import com.mandiconnect.models.VerificationToken;
 import com.mandiconnect.services.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,11 +29,21 @@ public class FarmerController {
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    // Existing: Get all farmers
+    //    To Get All Farmers
     @GetMapping("/getFarmers")
     public List<Farmer> getAllFarmers() {
         return farmerRepository.findAll();
     }
+
+    //    To Get specific Farmers
+    @GetMapping("/{id}")
+    public ResponseEntity<Farmer> getFarmerById(@PathVariable String id) {
+        return farmerRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+
 
     // New: Signup farmer (with email verification)
     @PostMapping("/signup")
@@ -77,4 +88,3 @@ public class FarmerController {
         return "Email verified! You can now log in.";
     }
 }
-d
