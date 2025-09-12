@@ -1,11 +1,13 @@
 package com.mandiconnect.controllers;
-
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import com.mandiconnect.Repositories.FarmerRepository;
 import com.mandiconnect.Repositories.VerificationTokenRepository;
 import com.mandiconnect.models.Farmer;
 import com.mandiconnect.models.VerificationToken;
 import com.mandiconnect.services.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -47,7 +49,20 @@ public class FarmerController {
 
     // New: Signup farmer (with email verification)
     @PostMapping("/signup")
-    public String signupFarmer(@RequestBody Farmer farmer) {
+    public ResponseEntity<?>  signupFarmer(@RequestBody Farmer farmer) {
+
+//        check user exists or not
+        String email = farmer.getEmail();
+        String phoneNo = farmer.getMobile();
+
+        boolean emailExists = farmerRepository.existsByEmail(email);
+        boolean phoneExists = farmerRepository.existsByMobile(phoneNo);
+
+        if (emailExists || phoneExists) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("Email or Mobile already exists!");
+        }
+
+
         // Hash password
         farmer.setPassword(passwordEncoder.encode(farmer.getPassword()));
         farmer.setVerified(false);
@@ -66,7 +81,7 @@ public class FarmerController {
         // Send email
         emailService.sendVerificationEmail(savedFarmer.getEmail(), token);
 
-        return "Farmer registered! Please check your email for verification link.";
+        return ResponseEntity.status(HttpStatus.CREATED).body("Farmer registered! Please check your email for verification link.");
     }
 
     // New: Verify email
@@ -85,6 +100,8 @@ public class FarmerController {
         farmer.setVerified(true);
         farmerRepository.save(farmer);
 
-        return "Email verified! You can now log in.";
+        tokenRepository.delete(verificationToken);
+
+        return ("Email verified! You can now log in.");
     }
 }

@@ -50,7 +50,7 @@ public class EmailService {
 
             mailSender.send(message);
 
-            System.out.println("📩 Verification email sent to: " + toEmail + " | Link: " + link);
+            System.out.println("📩 Verification email sent to: " + toEmail );
 
         } catch (Exception e) {
             System.out.println("❌ Failed to send email: " + e.getMessage());
