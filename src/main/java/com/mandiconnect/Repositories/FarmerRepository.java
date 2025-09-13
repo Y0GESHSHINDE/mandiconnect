@@ -9,8 +9,12 @@ import java.util.Optional;
 @Repository
 public interface FarmerRepository extends MongoRepository<Farmer, String> {
     Optional<Farmer> findByEmail(String email);
+
     boolean existsByName(String name);
+
     boolean existsByEmail(String email);
+
     boolean existsByMobile(String mobile);
+
 }
 

@@ -1,6 +1,5 @@
 package com.mandiconnect.controllers;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+
 import com.mandiconnect.Repositories.FarmerRepository;
 import com.mandiconnect.Repositories.VerificationTokenRepository;
 import com.mandiconnect.models.Farmer;
@@ -14,22 +13,20 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/farmer")
 public class FarmerController {
 
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     @Autowired
     private FarmerRepository farmerRepository;
-
     @Autowired
     private VerificationTokenRepository tokenRepository;
-
     @Autowired
     private EmailService emailService;
-
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     //    To Get All Farmers
     @GetMapping("/getFarmers")
@@ -46,10 +43,9 @@ public class FarmerController {
     }
 
 
-
     // New: Signup farmer (with email verification)
     @PostMapping("/signup")
-    public ResponseEntity<?>  signupFarmer(@RequestBody Farmer farmer) {
+    public ResponseEntity<?> signupFarmer(@RequestBody Farmer farmer) {
 
 //        check user exists or not
         String email = farmer.getEmail();
@@ -104,4 +100,42 @@ public class FarmerController {
 
         return ("Email verified! You can now log in.");
     }
+
+    //Login Farmer Api with JWT token
+//Login Farmer Api
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody Farmer loginRequest) {
+
+        String email = loginRequest.getEmail();
+        String rawPassword = loginRequest.getPassword();
+
+        // 1. Check if email exists
+        if (!farmerRepository.existsByEmail(email)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+        }
+
+        // 2. Find farmer by email
+        Optional<Farmer> farmerOpt = farmerRepository.findByEmail(email);
+
+        if (farmerOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+        }
+
+        Farmer farmer = farmerOpt.get();
+
+        // 3. Check if farmer is verified
+        if (!farmer.isVerified()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Please verify your email first");
+        }
+
+        // 4. Compare passwords
+        if (passwordEncoder.matches(rawPassword, farmer.getPassword())) {
+            // Login successful - remove password from response
+            farmer.setPassword(null);
+            return ResponseEntity.ok(farmer);
+        } else {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+        }
+    }
+
 }
