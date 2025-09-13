@@ -5,28 +5,29 @@ import com.mandiconnect.Repositories.VerificationTokenRepository;
 import com.mandiconnect.models.Farmer;
 import com.mandiconnect.models.VerificationToken;
 import com.mandiconnect.services.EmailService;
+import com.mandiconnect.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @RestController
 @RequestMapping("/farmer")
 public class FarmerController {
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
     @Autowired
     private FarmerRepository farmerRepository;
     @Autowired
     private VerificationTokenRepository tokenRepository;
     @Autowired
     private EmailService emailService;
+    @Autowired
+    private JwtUtil jwtUtil;
 
     //    To Get All Farmers
     @GetMapping("/getFarmers")
@@ -37,9 +38,7 @@ public class FarmerController {
     //    To Get specific Farmers
     @GetMapping("/{id}")
     public ResponseEntity<Farmer> getFarmerById(@PathVariable String id) {
-        return farmerRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return farmerRepository.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
 
@@ -83,15 +82,13 @@ public class FarmerController {
     // New: Verify email
     @GetMapping("/verify")
     public String verifyFarmer(@RequestParam("token") String token) {
-        VerificationToken verificationToken = tokenRepository.findByToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid token"));
+        VerificationToken verificationToken = tokenRepository.findByToken(token).orElseThrow(() -> new RuntimeException("Invalid token"));
 
         if (verificationToken.getExpiryDate().before(new Date())) {
             return "Token expired!";
         }
 
-        Farmer farmer = farmerRepository.findById(verificationToken.getFarmerId())
-                .orElseThrow(() -> new RuntimeException("Farmer not found"));
+        Farmer farmer = farmerRepository.findById(verificationToken.getFarmerId()).orElseThrow(() -> new RuntimeException("Farmer not found"));
 
         farmer.setVerified(true);
         farmerRepository.save(farmer);
@@ -130,9 +127,11 @@ public class FarmerController {
 
         // 4. Compare passwords
         if (passwordEncoder.matches(rawPassword, farmer.getPassword())) {
-            // Login successful - remove password from response
-            farmer.setPassword(null);
-            return ResponseEntity.ok(farmer);
+            String Token = jwtUtil.generateToken(email);
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Login successfully done");
+            response.put("token", Token);
+            return ResponseEntity.ok().body(response);
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
         }
