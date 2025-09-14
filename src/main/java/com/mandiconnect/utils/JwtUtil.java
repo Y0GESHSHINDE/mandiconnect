@@ -21,19 +21,19 @@ public class JwtUtil {
         this.expiration = expiration;
     }
 
-    // Generate JWT Token
-    public String generateToken(String email) {
-        return Jwts.builder().setSubject(email).setIssuedAt(new Date()).setExpiration(new Date(System.currentTimeMillis() + expiration)).signWith(key, SignatureAlgorithm.HS256).compact();
-    }
-
     // Validate JWT Token
-    public boolean validateToken(String token) {
+    public Boolean validateToken(String token) {
         try {
             Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
             return true;
         } catch (JwtException e) {
             return false;
         }
+    }
+
+    // Generate JWT Token
+    public String generateToken(String email) {
+        return Jwts.builder().setSubject(email).setIssuedAt(new Date()).setExpiration(new Date(System.currentTimeMillis() + expiration)).signWith(key, SignatureAlgorithm.HS256).compact();
     }
 
     // Extract Email from Token

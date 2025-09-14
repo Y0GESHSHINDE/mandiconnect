@@ -47,7 +47,7 @@ public class FarmerController {
     public ResponseEntity<?> signupFarmer(@RequestBody Farmer farmer) {
 
 //        check user exists or not
-        String email = farmer.getEmail();
+        String email = farmer.getEmail().toLowerCase();
         String phoneNo = farmer.getMobile();
 
         boolean emailExists = farmerRepository.existsByEmail(email);
@@ -99,11 +99,10 @@ public class FarmerController {
     }
 
     //Login Farmer Api with JWT token
-//Login Farmer Api
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Farmer loginRequest) {
 
-        String email = loginRequest.getEmail();
+        String email = loginRequest.getEmail().toLowerCase();
         String rawPassword = loginRequest.getPassword();
 
         // 1. Check if email exists
@@ -130,11 +129,84 @@ public class FarmerController {
             String Token = jwtUtil.generateToken(email);
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Login successfully done");
+            response.put("User ID", farmer.getId());
             response.put("token", Token);
             return ResponseEntity.ok().body(response);
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
         }
+    }
+
+    //Update Farmer Info API
+    @PatchMapping("/update")
+    public ResponseEntity<?> update(@RequestParam("id") String id, @RequestBody Farmer updateData, @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        Boolean isTokenValid = jwtUtil.validateToken(token);
+
+        if(!isTokenValid){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("JWT Token is Not Valid Login Again");
+        }
+
+        Optional<Farmer> optionalFarmer = farmerRepository.findById(id);
+        if (!optionalFarmer.isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Farmer not found with id: " + id);
+        }
+        Farmer existing = optionalFarmer.get();
+
+        // 5) Update top-level primitive fields (only if non-null / not blank)
+        if (updateData.getName() != null && !updateData.getName().isBlank()) {
+            existing.setName(updateData.getName().trim());
+        }
+        if (updateData.getPassword() != null && !updateData.getPassword().isBlank()) {
+            String hashedPass = passwordEncoder.encode(updateData.getPassword());
+            existing.setPassword(hashedPass);
+        }
+
+        if (updateData.getFarmerAddress() != null) {
+            Farmer.FarmerAddress inAddr = updateData.getFarmerAddress();
+            Farmer.FarmerAddress existAddr = existing.getFarmerAddress();
+            if (existAddr == null) {
+                existAddr = new Farmer.FarmerAddress();
+                existing.setFarmerAddress(existAddr);
+            }
+            if (inAddr.getCity() != null && !inAddr.getCity().isBlank()) {
+                existAddr.setCity(inAddr.getCity().trim());
+            }
+            if (inAddr.getState() != null && !inAddr.getState().isBlank()) {
+                existAddr.setState(inAddr.getState().trim());
+            }
+            if (inAddr.getCountry() != null && !inAddr.getCountry().isBlank()) {
+                existAddr.setCountry(inAddr.getCountry().trim());
+            }
+        }
+
+        // 7) Update nested FarmDetails (create if null)
+        if (updateData.getFarmDetails() != null) {
+            Farmer.FarmDetails inFarm = updateData.getFarmDetails();
+            Farmer.FarmDetails existFarm = existing.getFarmDetails();
+            if (existFarm == null) {
+                existFarm = new   Farmer.FarmDetails();
+                existing.setFarmDetails(existFarm);
+            }
+            if (inFarm.getFarmSize() != null && !inFarm.getFarmSize().isBlank()) {
+                existFarm.setFarmSize(inFarm.getFarmSize().trim());
+            }
+            if (inFarm.getCropsGrown() != null && !inFarm.getCropsGrown().isEmpty()) {
+                existFarm.setCropsGrown(inFarm.getCropsGrown());
+            }
+            if (inFarm.getIrrigationType() != null && !inFarm.getIrrigationType().isBlank()) {
+                existFarm.setIrrigationType(inFarm.getIrrigationType().trim());
+            }
+            if (inFarm.getSoilType() != null && !inFarm.getSoilType().isBlank()) {
+                existFarm.setSoilType(inFarm.getSoilType().trim());
+            }
+        }
+
+        farmerRepository.save(existing);
+
+
+        return ResponseEntity.status(HttpStatus.OK).body("Update successfully" );
     }
 
 }
