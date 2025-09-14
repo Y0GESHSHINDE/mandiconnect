@@ -1,4 +1,4 @@
-package com.mandiconnect.Repositories;
+package com.mandiconnect.repositories;
 
 import com.mandiconnect.models.Farmer;
 import org.springframework.data.mongodb.repository.MongoRepository;
