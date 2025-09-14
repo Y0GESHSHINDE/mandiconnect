@@ -143,14 +143,13 @@ public class FarmerController {
         String token = authHeader.replace("Bearer", "").trim();
         Boolean isTokenValid = jwtUtil.validateToken(token);
 
-        if(!isTokenValid){
+        if (!isTokenValid) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("JWT Token is Not Valid Login Again");
         }
 
         Optional<Farmer> optionalFarmer = farmerRepository.findById(id);
         if (!optionalFarmer.isPresent()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body("Farmer not found with id: " + id);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Farmer not found with id: " + id);
         }
         Farmer existing = optionalFarmer.get();
 
@@ -186,7 +185,7 @@ public class FarmerController {
             Farmer.FarmDetails inFarm = updateData.getFarmDetails();
             Farmer.FarmDetails existFarm = existing.getFarmDetails();
             if (existFarm == null) {
-                existFarm = new   Farmer.FarmDetails();
+                existFarm = new Farmer.FarmDetails();
                 existing.setFarmDetails(existFarm);
             }
             if (inFarm.getFarmSize() != null && !inFarm.getFarmSize().isBlank()) {
@@ -206,7 +205,7 @@ public class FarmerController {
         farmerRepository.save(existing);
 
 
-        return ResponseEntity.status(HttpStatus.OK).body("Update successfully" );
+        return ResponseEntity.status(HttpStatus.OK).body("Update successfully");
     }
 
 }
