@@ -1,4 +1,4 @@
-package com.mandiconnect.Repositories;
+package com.mandiconnect.repositories;
 
 import com.mandiconnect.models.VerificationToken;
 import org.springframework.data.mongodb.repository.MongoRepository;

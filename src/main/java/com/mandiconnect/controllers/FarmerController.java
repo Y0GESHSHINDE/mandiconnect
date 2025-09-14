@@ -1,7 +1,7 @@
 package com.mandiconnect.controllers;
 
-import com.mandiconnect.Repositories.FarmerRepository;
-import com.mandiconnect.Repositories.VerificationTokenRepository;
+import com.mandiconnect.repositories.FarmerRepository;
+import com.mandiconnect.repositories.VerificationTokenRepository;
 import com.mandiconnect.models.Farmer;
 import com.mandiconnect.models.VerificationToken;
 import com.mandiconnect.services.EmailService;
