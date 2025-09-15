@@ -139,4 +139,64 @@ public class BuyerController {
         }
     }
 
+    @PatchMapping("/update/{id}")
+    public ResponseEntity<?> patchUpdateBuyer(@PathVariable String id, @RequestBody Buyer updatedBuyer) {
+
+        return buyerRepository.findById(id)
+                .map(existingBuyer -> {
+
+                    if (updatedBuyer.getName() != null) {
+                        existingBuyer.setName(updatedBuyer.getName());
+                    }
+
+                    if (updatedBuyer.getMobile() != null) {
+                        if (buyerRepository.existsByMobile(updatedBuyer.getMobile()) &&
+                                !existingBuyer.getMobile().equals(updatedBuyer.getMobile())) {
+                            return ResponseEntity.status(HttpStatus.CONFLICT).body("Mobile already exists!");
+                        }
+                        existingBuyer.setMobile(updatedBuyer.getMobile());
+                    }
+
+                    if (updatedBuyer.getCompanyName() != null) {
+                        existingBuyer.setCompanyName(updatedBuyer.getCompanyName());
+                    }
+
+                    if (updatedBuyer.getCompanyAddress() != null) {
+                        Buyer.CompanyAddress newAddr = updatedBuyer.getCompanyAddress();
+                        Buyer.CompanyAddress oldAddr = existingBuyer.getCompanyAddress();
+                        if (oldAddr == null) {
+                            oldAddr = new Buyer.CompanyAddress();
+                        }
+                        if (newAddr.getCity() != null) oldAddr.setCity(newAddr.getCity());
+                        if (newAddr.getState() != null) oldAddr.setState(newAddr.getState());
+                        if (newAddr.getCountry() != null) oldAddr.setCountry(newAddr.getCountry());
+                        existingBuyer.setCompanyAddress(oldAddr);
+                    }
+
+                    if (updatedBuyer.getPreferredCrops() != null && !updatedBuyer.getPreferredCrops().isEmpty()) {
+                        existingBuyer.setPreferredCrops(updatedBuyer.getPreferredCrops());
+                    }
+
+                    if (updatedBuyer.getPassword() != null) {
+                        existingBuyer.setPassword(passwordEncoder.encode(updatedBuyer.getPassword()));
+                    }
+
+                    Buyer savedBuyer = buyerRepository.save(existingBuyer);
+                    return ResponseEntity.ok(savedBuyer);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/delete/{id}")
+    public ResponseEntity<?> deleteBuyer(@PathVariable String id) {
+
+        return buyerRepository.findById(id)
+                .map(buyer -> {
+                    buyerRepository.deleteById(id);
+                    return ResponseEntity.ok("Buyer deleted successfully!");
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+
 }
