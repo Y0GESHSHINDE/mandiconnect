@@ -1,9 +1,9 @@
 package com.mandiconnect.controllers;
 
-import com.mandiconnect.repositories.FarmerRepository;
-import com.mandiconnect.repositories.VerificationTokenRepository;
 import com.mandiconnect.models.Farmer;
 import com.mandiconnect.models.VerificationToken;
+import com.mandiconnect.repositories.FarmerRepository;
+import com.mandiconnect.repositories.VerificationTokenRepository;
 import com.mandiconnect.services.EmailService;
 import com.mandiconnect.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -138,8 +138,8 @@ public class FarmerController {
     }
 
     //Update Farmer Info API
-    @PatchMapping("/update")
-    public ResponseEntity<?> update(@RequestParam("id") String id, @RequestBody Farmer updateData, @RequestHeader("Authorization") String authHeader) {
+    @PatchMapping("/update/{id}")
+    public ResponseEntity<?> update(@PathVariable String id, @RequestBody Farmer updateData, @RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer", "").trim();
         Boolean isTokenValid = jwtUtil.validateToken(token);
 
@@ -208,4 +208,21 @@ public class FarmerController {
         return ResponseEntity.status(HttpStatus.OK).body("Update successfully");
     }
 
+    @DeleteMapping("/delete/{id}")
+    public ResponseEntity<?> deleteBuyer(@PathVariable String id , @RequestHeader("Authorization") String authHeader ) {
+
+        String token = authHeader.replace("Bearer", "").trim();
+        Boolean isTokenValid = jwtUtil.validateToken(token);
+
+        if (!isTokenValid) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("JWT Token is Not Valid Login Again");
+        }
+
+        return farmerRepository.findById(id)
+                .map(buyer -> {
+                    farmerRepository.deleteById(id);
+                    return ResponseEntity.ok("Farmer deleted successfully!");
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
 }
