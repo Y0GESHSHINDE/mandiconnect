@@ -20,7 +20,7 @@ public class DailyMarketStats {
     private String id;
 
     @DBRef
-    private Crops crop;     // full Crop document reference
+    private Crops  crop;     // full Crop document reference
 
     @DBRef
     private Market market; // full Market document reference
