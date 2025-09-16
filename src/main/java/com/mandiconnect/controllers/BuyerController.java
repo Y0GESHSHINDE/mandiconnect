@@ -98,7 +98,7 @@ public class BuyerController {
         buyer.setVerified(true);
         buyerRepository.save(buyer);
 
-        tokenRepository.delete(verificationToken);
+//        tokenRepository.delete(verificationToken);
 
         return "Email verified! You can now log in.";
     }
@@ -140,7 +140,19 @@ public class BuyerController {
     }
 
     @PatchMapping("/update/{id}")
-    public ResponseEntity<?> patchUpdateBuyer(@PathVariable String id, @RequestBody Buyer updatedBuyer) {
+    public ResponseEntity<?> patchUpdateBuyer(
+            @PathVariable String id,
+            @RequestBody Buyer updatedBuyer,
+            @RequestHeader("Authorization") String authHeader) {
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid Authorization header");
+        }
+        String token = authHeader.replace("Bearer", "").trim();
+
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token");
+        }
 
         return buyerRepository.findById(id)
                 .map(existingBuyer -> {
@@ -187,8 +199,23 @@ public class BuyerController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity<?> deleteBuyer(@PathVariable String id) {
+    public ResponseEntity<?> deleteBuyer(
+            @PathVariable String id,
+            @RequestHeader("Authorization") String authHeader) {
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Missing or invalid Authorization header");
+        }
+
+        String token = authHeader.replace("Bearer", "").trim();
+
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Invalid or expired token");
+        }
 
         return buyerRepository.findById(id)
                 .map(buyer -> {
