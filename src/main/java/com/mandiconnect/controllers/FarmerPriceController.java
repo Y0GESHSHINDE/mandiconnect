@@ -1,14 +1,18 @@
 package com.mandiconnect.controllers;
 
+import com.mandiconnect.models.Crops;
 import com.mandiconnect.models.DailyMarketStats;
 import com.mandiconnect.models.FarmerPrice;
+import com.mandiconnect.models.Market;
+import com.mandiconnect.repositories.CropRepository;
 import com.mandiconnect.repositories.DailyMarketStatsRepository;
 import com.mandiconnect.repositories.FarmerPriceRepository;
+import com.mandiconnect.repositories.MarketRepository;
 import com.mandiconnect.utils.JwtUtil;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,15 +29,21 @@ public class FarmerPriceController {
     private DailyMarketStatsRepository dailyMarketStatsRepository;
 
     @Autowired
+    private CropRepository cropRepository;
+
+    @Autowired
+    private MarketRepository marketRepository;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
-    // 1️⃣ Create or Update Farmer Price
+    // ---------------- Create or Update Farmer Price ----------------
     @PostMapping("/addPrice")
     ResponseEntity<?> createOrUpdatePrice(@RequestBody FarmerPrice priceEntry, @RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer", "").trim();
-        boolean isVerfied = jwtUtil.validateToken(token);
+        boolean isVerified = jwtUtil.validateToken(token);
 
-        if (!isVerfied) {
+        if (!isVerified) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
         }
 
@@ -43,11 +53,38 @@ public class FarmerPriceController {
             priceEntry.setDate(today);
         }
 
+        // Fetch crop metadata
+        Crops crop = cropRepository.findById(priceEntry.getCropId()).orElseThrow();
+
+        // ✅ Normalize input price to crop’s displayUnit
+        double normalizedPrice = priceEntry.getPrice();
+        String inputUnit = priceEntry.getUnit();
+
+        if ("grain".equalsIgnoreCase(crop.getType())) {
+            if ("kg".equalsIgnoreCase(inputUnit)) {
+                normalizedPrice = normalizedPrice * 100; // per kg → per quintal
+            }
+            priceEntry.setUnit("quintal");
+        } else if ("leafy-vegetable".equalsIgnoreCase(crop.getType())) {
+            priceEntry.setUnit("judi"); // only judi allowed
+        } else {
+            priceEntry.setUnit("kg"); // fruits/vegetables → kg
+        }
+
+        priceEntry.setPrice(normalizedPrice);
+
         // Check if farmer already has entry for crop+market+date
-        FarmerPrice existing = farmerPriceRepository.findByFarmerIdAndCropIdAndMarketIdAndDate(priceEntry.getFarmerId(), priceEntry.getCropId(), priceEntry.getMarketId(), today).orElse(null);
+        FarmerPrice existing = farmerPriceRepository
+                .findByFarmerIdAndCropIdAndMarketIdAndDate(
+                        priceEntry.getFarmerId(),
+                        priceEntry.getCropId(),
+                        priceEntry.getMarketId(),
+                        today
+                )
+                .orElse(null);
 
         if (existing != null) {
-            existing.setPrice(priceEntry.getPrice());
+            existing.setPrice(normalizedPrice);
             existing.setUnit(priceEntry.getUnit());
             existing.setCurrency(priceEntry.getCurrency());
             existing.setUpdatedAt(LocalDateTime.now());
@@ -59,13 +96,13 @@ public class FarmerPriceController {
         }
 
         // Recalculate stats for this crop+market+date
-        recalculateMarketStats(priceEntry.getCropId(), priceEntry.getMarketId(), today, priceEntry.getUnit(), priceEntry.getCurrency());
+        recalculateMarketStats(priceEntry.getCropId(), priceEntry.getMarketId(), today);
 
         return ResponseEntity.ok(priceEntry);
     }
 
-    // 2️⃣ Recalculate Aggregated Stats
-    private void recalculateMarketStats(String cropId, String marketId, LocalDate date, String unit, String currency) {
+    // ---------------- Recalculate Aggregated Stats ----------------
+    private void recalculateMarketStats(String cropId, String marketId, LocalDate date) {
         List<FarmerPrice> prices = farmerPriceRepository.findByCropIdAndMarketIdAndDate(cropId, marketId, date);
 
         if (prices.isEmpty()) return;
@@ -74,19 +111,38 @@ public class FarmerPriceController {
         double min = prices.stream().mapToDouble(FarmerPrice::getPrice).min().orElse(0.0);
         double max = prices.stream().mapToDouble(FarmerPrice::getPrice).max().orElse(0.0);
 
-        DailyMarketStats stats = dailyMarketStatsRepository.findByCropIdAndMarketIdAndDate(cropId, marketId, date).orElse(new DailyMarketStats());
+        DailyMarketStats stats = dailyMarketStatsRepository
+                .findByCropIdAndMarketIdAndDate(cropId, marketId, date)
+                .orElse(new DailyMarketStats());
 
-        stats.setCropId(cropId);
-        stats.setMarketId(marketId);
+        Crops crop = cropRepository.findById(cropId).orElseThrow();
+        Market market = marketRepository.findById(marketId).orElseThrow();
+
+        stats.setCrop(crop);
+        stats.setMarket(market);
         stats.setDate(date);
         stats.setAveragePrice(avg);
         stats.setMinPrice(min);
         stats.setMaxPrice(max);
         stats.setTotalFarmers(prices.size());
-        stats.setUnit(unit);
-        stats.setCurrency(currency);
+        stats.setUnit(crop.getDisplayUnit()); // directly from crop
+        stats.setCurrency(prices.get(0).getCurrency());
         stats.setUpdatedAt(LocalDateTime.now());
 
         dailyMarketStatsRepository.save(stats);
     }
+
+    // Get ALl market stats
+    @GetMapping("/getMarketStats")
+    ResponseEntity<?> getMarketStats(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        boolean isVerfied = jwtUtil.validateToken(token);
+
+        if (!isVerfied) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Login First Then Try");
+        }
+        return ResponseEntity.status(HttpStatus.OK).body(dailyMarketStatsRepository.findAll());
+    }
+
+
 }

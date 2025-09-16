@@ -47,7 +47,7 @@ public class CommonController {
     }
 
     @PostMapping("/addCrop")
-    ResponseEntity<?> addCrop(@RequestHeader("Authorization") String authHeader , @RequestBody Crops cropData){
+    ResponseEntity<?> addCrop(@RequestHeader("Authorization") String authHeader, @RequestBody Crops cropData) {
         String token = authHeader.replace("Bearer", "").trim();
         boolean isVerfied = jwtUtil.validateToken(token);
 
@@ -55,10 +55,27 @@ public class CommonController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
         }
 
+        // Auto-assign displayUnit based on type
+        switch (cropData.getType().toLowerCase()) {
+            case "grain":
+                cropData.setDisplayUnit("quintal");
+                break;
+            case "fruit":
+            case "vegetable":
+                cropData.setDisplayUnit("kg");
+                break;
+            case "leafy-vegetable":
+                cropData.setDisplayUnit("judi");
+                break;
+            default:
+                cropData.setDisplayUnit("kg"); // fallback
+        }
+
         Crops savedCrop = cropRepository.save(cropData);
 
         return ResponseEntity.status(HttpStatus.OK).body(savedCrop);
     }
+
 
     @GetMapping("/getAllCrop")
     ResponseEntity<?> getAllCrop(@RequestHeader("Authorization") String authHeader){

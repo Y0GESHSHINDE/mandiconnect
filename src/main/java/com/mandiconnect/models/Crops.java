@@ -14,10 +14,8 @@ public class Crops {
 
     @Id
     private String id;
-
     private String name;
-    private String scientificName;
-    private String category;       // Grain, Fruit, Vegetable, etc.
+    private String type;        // e.g., "grain", "vegetable", "leafy-vegetable"
+    private String displayUnit; // e.g., "quintal" for grains, "kg" for vegetables, "bundel(judi)" for leafy      // Grain, Fruit, Vegetable, etc.
     private String variety;
-    private String description;
 }

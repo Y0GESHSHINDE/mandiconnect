@@ -74,7 +74,7 @@ public class FarmerController {
         tokenRepository.save(verificationToken);
 
         // Send email
-        emailService.sendVerificationEmail(savedFarmer.getEmail(), token);
+//        emailService.sendVerificationEmail(savedFarmer.getEmail(), token);
 
         return ResponseEntity.status(HttpStatus.CREATED).body("Farmer registered! Please check your email for verification link.");
     }
