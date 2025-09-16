@@ -62,7 +62,12 @@ public class CommonController {
 
     @GetMapping("/getAllCrop")
     ResponseEntity<?> getAllCrop(@RequestHeader("Authorization") String authHeader){
-        String token = authHeader.replace("bearer", "").trim();
+        String token = authHeader.replace("Bearer", "").trim();
+        boolean isVerfied = jwtUtil.validateToken(token);
+
+        if (!isVerfied) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
+        }
 
         return ResponseEntity.status(HttpStatus.OK).body(cropRepository.findAll());
     }
