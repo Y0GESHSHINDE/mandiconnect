@@ -6,10 +6,7 @@ import com.mandiconnect.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class CommonController {
@@ -35,5 +32,13 @@ public class CommonController {
         return ResponseEntity.status(HttpStatus.OK).body(savedMarket);
     }
 
+    @GetMapping("/getAllMarket")
+    ResponseEntity<?> getAllMarket(@RequestHeader("Authorization") String authHeader ){
+        String token = authHeader.replace("Bearer", "").trim();
+        boolean isVerfied = jwtUtil.validateToken(token);
+
+        return ResponseEntity.status(HttpStatus.OK).body(marketRepository.findAll());
+
+    }
 
 }

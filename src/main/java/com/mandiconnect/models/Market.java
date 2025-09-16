@@ -17,10 +17,12 @@ public class Market {
     @Id
     private String id;
 
-    @Field("marketName") // MongoDB field name
-    @JsonProperty("marketName") // JSON request/response field name
+    @Field("marketName") // field in MongoDB
+    @JsonProperty("marketName") // JSON property name
     private String marketName;
 
+    @Field("marketAddress") // tell MongoDB to store this as a nested object
+    @JsonProperty("marketAddress")
     private MarketAddress marketAddress;
 
     @Data
