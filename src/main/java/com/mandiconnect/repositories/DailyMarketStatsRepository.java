@@ -14,6 +14,8 @@ public interface DailyMarketStatsRepository extends MongoRepository<DailyMarketS
     // Find stats for a crop in a market on a given date
     Optional<DailyMarketStats> findByCropIdAndMarketIdAndDate(String cropId, String marketId, LocalDate date);
 
+    List<DailyMarketStats> findByMarket(String market);
+
     // (Optional) Find all stats for a crop in a market (useful for historical charts)
     List<DailyMarketStats> findByCropIdAndMarketIdOrderByDateAsc(String cropId, String marketId);
 }
