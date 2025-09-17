@@ -74,14 +74,7 @@ public class FarmerPriceController {
         priceEntry.setPrice(normalizedPrice);
 
         // Check if farmer already has entry for crop+market+date
-        FarmerPrice existing = farmerPriceRepository
-                .findByFarmerIdAndCropIdAndMarketIdAndDate(
-                        priceEntry.getFarmerId(),
-                        priceEntry.getCropId(),
-                        priceEntry.getMarketId(),
-                        today
-                )
-                .orElse(null);
+        FarmerPrice existing = farmerPriceRepository.findByFarmerIdAndCropIdAndMarketIdAndDate(priceEntry.getFarmerId(), priceEntry.getCropId(), priceEntry.getMarketId(), today).orElse(null);
 
         if (existing != null) {
             existing.setPrice(normalizedPrice);
@@ -111,9 +104,7 @@ public class FarmerPriceController {
         double min = prices.stream().mapToDouble(FarmerPrice::getPrice).min().orElse(0.0);
         double max = prices.stream().mapToDouble(FarmerPrice::getPrice).max().orElse(0.0);
 
-        DailyMarketStats stats = dailyMarketStatsRepository
-                .findByCropIdAndMarketIdAndDate(cropId, marketId, date)
-                .orElse(new DailyMarketStats());
+        DailyMarketStats stats = dailyMarketStatsRepository.findByCropIdAndMarketIdAndDate(cropId, marketId, date).orElse(new DailyMarketStats());
 
         Crops crop = cropRepository.findById(cropId).orElseThrow();
         Market market = marketRepository.findById(marketId).orElseThrow();
@@ -142,6 +133,36 @@ public class FarmerPriceController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Login First Then Try");
         }
         return ResponseEntity.status(HttpStatus.OK).body(dailyMarketStatsRepository.findAll());
+    }
+
+    // Get ALl market stats
+    @GetMapping("/getMarketStatsByMarket/{marketid}")
+    public ResponseEntity<?> getMarketStats(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable String marketid) {
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid Authorization header");
+        }
+
+        String token = authHeader.substring(7);
+        boolean isVerified;
+        try {
+            isVerified = jwtUtil.validateToken(token);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
+
+        if (!isVerified) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Login First Then Try");
+        }
+
+        List<DailyMarketStats> stats = dailyMarketStatsRepository.findByMarket(marketid);
+        if (stats == null || stats.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No stats found for market: " + marketid);
+        }
+
+        return ResponseEntity.ok(stats);
     }
 
 
