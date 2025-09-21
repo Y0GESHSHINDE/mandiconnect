@@ -51,9 +51,8 @@ public class BuyerController {
 
     @PostMapping("/signup")
     public ResponseEntity<?> signUpBuyer(@RequestBody Buyer buyer){
-//
+
         buyer.setEmail(buyer.getEmail().toLowerCase());
-//
 
         if (buyerRepository.existsByEmail(buyer.getEmail())) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body("Email already exists!");
@@ -67,7 +66,6 @@ public class BuyerController {
         buyer.setVerified(false);
 
         Buyer savedBuyer = buyerRepository.save(buyer);
-
 
         String token = UUID.randomUUID().toString();
         BuyerVerificationToken verificationToken = new BuyerVerificationToken();
