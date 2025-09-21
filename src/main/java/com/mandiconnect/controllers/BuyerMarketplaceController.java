@@ -1,7 +1,5 @@
 //package com.mandiconnect.controllers;
-package com.mandiconnect.controllers.buyerDemandController;
-
-
+package com.mandiconnect.controllers;
 import com.mandiconnect.models.BuyerDemands;
 import com.mandiconnect.repositories.BuyerDemandRepository;
 import com.mandiconnect.repositories.BuyerRepository;
@@ -19,7 +17,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/buyerDemands")
-public class BuyerDemandsController {
+public class BuyerMarketplaceController {
 
     @Autowired
     private BuyerDemandRepository buyerDemandRepository;
