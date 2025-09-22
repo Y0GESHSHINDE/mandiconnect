@@ -29,6 +29,7 @@ public class CropListing {
     private double price;
     private Location location;
     private String photoUrl;
+    private String publicId;
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
