@@ -23,4 +23,6 @@ public interface FarmerEntryRepository extends MongoRepository<FarmerEntry, Stri
     // Exact date range query
     @Query("{ 'crop': ?0, 'market': ?1, 'createdAt': { $gte: ?2, $lt: ?3 } }")
     List<FarmerEntry> findByCropAndMarketAndCreatedAtBetween(Crops crop, Market market, LocalDateTime startDate, LocalDateTime endDate);
+
+    List<FarmerEntry> findByCropIdAndMarketId(String cropId, String marketId);
 }
