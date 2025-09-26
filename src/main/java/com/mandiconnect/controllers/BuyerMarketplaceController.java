@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/buyerDemands")
+@RequestMapping("/marketplace/buyer")
 public class BuyerMarketplaceController {
 
     @Autowired
