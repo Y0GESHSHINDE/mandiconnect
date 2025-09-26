@@ -38,7 +38,11 @@ public class FarmerMarketplaceController {
     private JwtUtil jwtUtil;
 
     @PostMapping("/upload")
-    ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) {
+    ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file ,@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
         try {
             Map<String, String> fileData = fileuploadService.uploadFile(file);
             Map<String, String> responseData = Map.of(
@@ -53,7 +57,11 @@ public class FarmerMarketplaceController {
 
 
     @DeleteMapping("/delete")
-    public ResponseEntity<?> deleteFile(@RequestParam("public_id") String publicId) throws IOException {
+    public ResponseEntity<?> deleteFile(@RequestParam("public_id") String publicId ,@RequestHeader("Authorization") String authHeader) throws IOException {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
         Map<String, Object> result = fileuploadService.deleteFile(publicId);
         return ResponseEntity.ok(result);
     }
@@ -81,7 +89,11 @@ public class FarmerMarketplaceController {
 
 
     @GetMapping("getAllListing")
-    ResponseEntity<?> getAllListing() {
+    ResponseEntity<?> getAllListing(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
         return ResponseEntity.ok(cropListingRepository.findAll());
     }
 
