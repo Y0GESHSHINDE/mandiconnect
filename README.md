@@ -1,10 +1,10 @@
-
 # MandiConnect - Backend
+
+![Status](https://img.shields.io/badge/Status-Ongoing-orange) 
 
 **MandiConnect** is a community-driven agricultural platform backend designed to connect farmers and buyers through transparent price sharing and a marketplace. This repository contains the backend implementation using Java and Spring Boot 3.
 
 > ⚠️ **Note:** This project is currently ongoing. API endpoints will be added and documented at the end of the project.
-
 
 
 ## **Technologies Used**
