@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/marketplace/farmer")
@@ -68,24 +69,38 @@ public class FarmerMarketplaceController {
 
 
     @PostMapping("/cropListing")
-    public ResponseEntity<?> createCropListing(@RequestHeader("Authorization") String authHeader, @RequestBody CropListing cropListing) {
+    public ResponseEntity<?> createCropListing(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody CropListing cropListing) {
+
         String token = authHeader.replace("Bearer", "").trim();
         if (!jwtUtil.validateToken(token)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
         }
-        // Fetch full Farmer and Crop objects
-        Farmer farmer = farmerRepository.findById(cropListing.getFarmer().getId()).orElseThrow(() -> new RuntimeException("Invalid Farmer ID"));
 
-        Crops crop = cropRepository.findById(cropListing.getCrop().getId()).orElseThrow(() -> new RuntimeException("Invalid Crop ID"));
+        Optional<Farmer> farmer = farmerRepository.findById(cropListing.getFarmer().getId());
+        if (farmer.isEmpty()) {
+            return ResponseEntity
+                    .badRequest()
+                    .body("Error: Invalid Farmer ID");
+        }
 
-        cropListing.setFarmer(farmer);
-        cropListing.setCrop(crop);
+        Optional<Crops> crop = cropRepository.findById(cropListing.getCrop().getId());
+        if (crop.isEmpty()) {
+            return ResponseEntity
+                    .badRequest()
+                    .body("Error: Invalid Crop ID");
+        }
+
+        cropListing.setFarmer(farmer.get());
+        cropListing.setCrop(crop.get());
         cropListing.setCreatedAt(LocalDateTime.now());
         cropListing.setUpdatedAt(LocalDateTime.now());
 
         CropListing saved = cropListingRepository.save(cropListing);
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.ok("Price Entry Added ");
     }
+
 
 
     @GetMapping("getAllListing")
