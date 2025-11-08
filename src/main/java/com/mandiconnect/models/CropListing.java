@@ -38,6 +38,7 @@ public class CropListing {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Location {
+        private String village ;
         private String city;
         private String state;
         private String country;
