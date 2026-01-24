@@ -39,8 +39,27 @@ public class BuyerController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Buyer> getBuyerById(@PathVariable String id) {
-        return buyerRepository.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Map<String, Object>> getBuyerById(@PathVariable String id) {
+
+        return buyerRepository.findById(id)
+                .map(buyer -> {
+
+                    Map<String, Object> response = new HashMap<>();
+
+                    response.put("id", buyer.getId());
+                    response.put("verified", buyer.isVerified());
+                    response.put("Name", buyer.getName());
+                    response.put("Mobile", buyer.getMobile());
+                    response.put("Email", buyer.getEmail());
+                    response.put("Company Name", buyer.getCompanyName());
+                    response.put("Company Address", buyer.getCompanyAddress());
+                    response.put("PreferredCrops", buyer.getPreferredCrops());
+
+                    // Password is NOT added
+
+                    return ResponseEntity.ok(response);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping("/signup")
