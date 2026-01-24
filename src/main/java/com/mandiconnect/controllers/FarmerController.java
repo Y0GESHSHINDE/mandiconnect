@@ -35,10 +35,28 @@ public class FarmerController {
         return farmerRepository.findAll();
     }
 
-    //    To Get specific Farmers
     @GetMapping("/{id}")
-    public ResponseEntity<Farmer> getFarmerById(@PathVariable String id) {
-        return farmerRepository.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Map<String, Object>> getFarmerById(@PathVariable String id) {
+
+        return farmerRepository.findById(id)
+                .map(farmer -> {
+
+                    Map<String, Object> response = new HashMap<>();
+
+                    response.put("id", farmer.getId());
+                    response.put("name", farmer.getName());
+                    response.put("mobile", farmer.getMobile());
+                    response.put("email", farmer.getEmail());
+                    response.put("role", farmer.getRole());
+                    response.put("verified", farmer.isVerified());
+                    response.put("farmerAddress", farmer.getFarmerAddress());
+                    response.put("farmDetails", farmer.getFarmDetails());
+
+                    // password is NOT added
+
+                    return ResponseEntity.ok(response);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
 
