@@ -5,7 +5,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.util.List;
 
@@ -16,61 +15,43 @@ import java.util.List;
 public class Farmer {
 
     @Id
-    private String id;  // MongoDB _id
+    private String id;
 
-    @Field("Name")
     private String name;
-
-    @Field("Mobile")
     private String mobile;
-
-    @Field("Email")
     private String email;
+    private String password;
 
-    @Field("Password")
-    private String password;  // bcrypt hashed password
+    private String role = "FARMER";
+    private boolean isVerified = false;
 
-    @Field("Role")
-    private String role = "FARMER"; // default role
-
-    @Field("isVerified")
-    private boolean isVerified = false; // for email verification
-
-    @Field("Farmer Address")
     private FarmerAddress farmerAddress;
-
-    @Field("FarmDetails")
     private FarmDetails farmDetails;
 
-    // ---------- Inner Classes ----------
+    // ---------------- ADDRESS ----------------
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     public static class FarmerAddress {
-        @Field("City")
         private String city;
-
-        @Field("State")
         private String state;
-
-        @Field("Country")
         private String country;
     }
 
+    // ---------------- FARM DETAILS ----------------
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     public static class FarmDetails {
-        @Field("FarmSize")
+
         private String farmSize;
 
-        @Field("CropsGrown")
-        private List<String> cropsGrown;
+        // ✅ THIS WILL NOW SAVE
+        private List<String> cropIds;
 
-        @Field("IrrigationType")
+        private List<String> preferredMarketIds;
+
         private String irrigationType;
-
-        @Field("SoilType")
         private String soilType;
     }
 }

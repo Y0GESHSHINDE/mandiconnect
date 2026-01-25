@@ -64,37 +64,36 @@ public class FarmerController {
     @PostMapping("/signup")
     public ResponseEntity<?> signupFarmer(@RequestBody Farmer farmer) {
 
-//        check user exists or not
         String email = farmer.getEmail().toLowerCase();
         String phoneNo = farmer.getMobile();
 
-        boolean emailExists = farmerRepository.existsByEmail(email);
-        boolean phoneExists = farmerRepository.existsByMobile(phoneNo);
-
-        if (emailExists || phoneExists) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Email or Mobile already exists!");
+        if (farmerRepository.existsByEmail(email) ||
+                farmerRepository.existsByMobile(phoneNo)) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body("Email or Mobile already exists!");
         }
 
-
-        // Hash password
+        farmer.setEmail(email);
         farmer.setPassword(passwordEncoder.encode(farmer.getPassword()));
         farmer.setVerified(false);
-
-        // Save farmer
+        System.out.println(farmer);
         Farmer savedFarmer = farmerRepository.save(farmer);
 
-        // Create verification token
         String token = UUID.randomUUID().toString();
         VerificationToken verificationToken = new VerificationToken();
         verificationToken.setToken(token);
         verificationToken.setFarmerId(savedFarmer.getId());
-        verificationToken.setExpiryDate(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000));
+        verificationToken.setExpiryDate(
+                new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+        );
         tokenRepository.save(verificationToken);
 
-        // Send email
         emailService.sendVerificationEmail(savedFarmer.getEmail(), token);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body("Farmer registered! Please check your email for verification link.");
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body("Farmer registered! Please verify your email.");
     }
 
     // New: Verify email
@@ -157,73 +156,91 @@ public class FarmerController {
 
     //Update Farmer Info API
     @PatchMapping("/update/{id}")
-    public ResponseEntity<?> update(@PathVariable String id, @RequestBody Farmer updateData, @RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer", "").trim();
-        Boolean isTokenValid = jwtUtil.validateToken(token);
+    public ResponseEntity<?> updateFarmer(
+            @PathVariable String id,
+            @RequestBody Farmer updateData,
+            @RequestHeader("Authorization") String authHeader
+    ) {
 
-        if (!isTokenValid) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("JWT Token is Not Valid Login Again");
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body("Invalid JWT token");
         }
 
         Optional<Farmer> optionalFarmer = farmerRepository.findById(id);
-        if (!optionalFarmer.isPresent()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Farmer not found with id: " + id);
+        if (optionalFarmer.isEmpty()) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body("Farmer not found");
         }
+
         Farmer existing = optionalFarmer.get();
 
-        // 5) Update top-level primitive fields (only if non-null / not blank)
+        // ---------------- BASIC INFO ----------------
         if (updateData.getName() != null && !updateData.getName().isBlank()) {
             existing.setName(updateData.getName().trim());
         }
+
         if (updateData.getPassword() != null && !updateData.getPassword().isBlank()) {
-            String hashedPass = passwordEncoder.encode(updateData.getPassword());
-            existing.setPassword(hashedPass);
+            existing.setPassword(
+                    passwordEncoder.encode(updateData.getPassword())
+            );
         }
 
+        // ---------------- ADDRESS ----------------
         if (updateData.getFarmerAddress() != null) {
             Farmer.FarmerAddress inAddr = updateData.getFarmerAddress();
-            Farmer.FarmerAddress existAddr = existing.getFarmerAddress();
-            if (existAddr == null) {
-                existAddr = new Farmer.FarmerAddress();
-                existing.setFarmerAddress(existAddr);
+            Farmer.FarmerAddress exAddr = existing.getFarmerAddress();
+
+            if (exAddr == null) {
+                exAddr = new Farmer.FarmerAddress();
+                existing.setFarmerAddress(exAddr);
             }
-            if (inAddr.getCity() != null && !inAddr.getCity().isBlank()) {
-                existAddr.setCity(inAddr.getCity().trim());
-            }
-            if (inAddr.getState() != null && !inAddr.getState().isBlank()) {
-                existAddr.setState(inAddr.getState().trim());
-            }
-            if (inAddr.getCountry() != null && !inAddr.getCountry().isBlank()) {
-                existAddr.setCountry(inAddr.getCountry().trim());
-            }
+
+            if (inAddr.getCity() != null && !inAddr.getCity().isBlank())
+                exAddr.setCity(inAddr.getCity().trim());
+
+            if (inAddr.getState() != null && !inAddr.getState().isBlank())
+                exAddr.setState(inAddr.getState().trim());
+
+            if (inAddr.getCountry() != null && !inAddr.getCountry().isBlank())
+                exAddr.setCountry(inAddr.getCountry().trim());
         }
 
-        // 7) Update nested FarmDetails (create if null)
+        // ---------------- FARM DETAILS ----------------
         if (updateData.getFarmDetails() != null) {
             Farmer.FarmDetails inFarm = updateData.getFarmDetails();
-            Farmer.FarmDetails existFarm = existing.getFarmDetails();
-            if (existFarm == null) {
-                existFarm = new Farmer.FarmDetails();
-                existing.setFarmDetails(existFarm);
+            Farmer.FarmDetails exFarm = existing.getFarmDetails();
+
+            if (exFarm == null) {
+                exFarm = new Farmer.FarmDetails();
+                existing.setFarmDetails(exFarm);
             }
-            if (inFarm.getFarmSize() != null && !inFarm.getFarmSize().isBlank()) {
-                existFarm.setFarmSize(inFarm.getFarmSize().trim());
-            }
-            if (inFarm.getCropsGrown() != null && !inFarm.getCropsGrown().isEmpty()) {
-                existFarm.setCropsGrown(inFarm.getCropsGrown());
-            }
-            if (inFarm.getIrrigationType() != null && !inFarm.getIrrigationType().isBlank()) {
-                existFarm.setIrrigationType(inFarm.getIrrigationType().trim());
-            }
-            if (inFarm.getSoilType() != null && !inFarm.getSoilType().isBlank()) {
-                existFarm.setSoilType(inFarm.getSoilType().trim());
-            }
+
+            if (inFarm.getFarmSize() != null && !inFarm.getFarmSize().isBlank())
+                exFarm.setFarmSize(inFarm.getFarmSize().trim());
+
+            if (inFarm.getCropIds() != null && !inFarm.getCropIds().isEmpty())
+                exFarm.setCropIds(inFarm.getCropIds());
+
+            if (inFarm.getPreferredMarketIds() != null &&
+                    !inFarm.getPreferredMarketIds().isEmpty())
+                exFarm.setPreferredMarketIds(inFarm.getPreferredMarketIds());
+
+            if (inFarm.getIrrigationType() != null &&
+                    !inFarm.getIrrigationType().isBlank())
+                exFarm.setIrrigationType(inFarm.getIrrigationType().trim());
+
+            if (inFarm.getSoilType() != null &&
+                    !inFarm.getSoilType().isBlank())
+                exFarm.setSoilType(inFarm.getSoilType().trim());
         }
 
         farmerRepository.save(existing);
 
-
-        return ResponseEntity.status(HttpStatus.OK).body("Update successfully");
+        return ResponseEntity.ok("Farmer updated successfully");
     }
 
     @DeleteMapping("/delete/{id}")
