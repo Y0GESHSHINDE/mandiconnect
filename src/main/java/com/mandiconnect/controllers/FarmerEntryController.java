@@ -3,6 +3,7 @@ package com.mandiconnect.controllers;
 import com.mandiconnect.models.FarmerEntry;
 import com.mandiconnect.repositories.FarmerEntryRepository;
 import com.mandiconnect.services.FarmerEntryService;
+import com.mandiconnect.services.NotificationService;
 import com.mandiconnect.utils.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,7 +20,7 @@ public class FarmerEntryController {
     private final FarmerEntryService farmerEntryService;
     private final FarmerEntryRepository farmerEntryRepository;
     private final JwtUtil jwtUtil;
-
+    private final NotificationService notificationService ;
     @PostMapping("/add")
     public ResponseEntity<?> addEntry(@RequestHeader("Authorization") String authHeader, @RequestBody FarmerEntry entry) {
         String token = authHeader.replace("Bearer", "").trim();
@@ -30,6 +31,7 @@ public class FarmerEntryController {
         }
 
         FarmerEntry savedEntry = farmerEntryService.addFarmerEntry(entry);
+        notificationService.notifyPricePosted(savedEntry);
         return ResponseEntity.ok("Price Entry Add");
     }
 
