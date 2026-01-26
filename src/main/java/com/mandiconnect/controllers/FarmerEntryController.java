@@ -107,7 +107,7 @@ public class FarmerEntryController {
             entry.getFeedback().getVotedFarmers().add(farmerId);
 
             farmerEntryRepository.save(entry);
-
+            notificationService.notifyPriceAgree(entry, farmerId);
             return ResponseEntity.ok("Price agreed successfully");
         }
 
@@ -143,6 +143,7 @@ public class FarmerEntryController {
             entry.getFeedback().getVotedFarmers().add(farmerId);
 
             farmerEntryRepository.save(entry);
+            notificationService.notifyPriceDisAgree(entry, farmerId);
 
             return ResponseEntity.ok("Price disagreed successfully");
         }
