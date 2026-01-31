@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -72,4 +73,118 @@ public class FarmerEntryController {
         List<FarmerEntry> entries = farmerEntryRepository.findByFarmerId(farmerId);
         return ResponseEntity.ok(entries);
     }
+
+
+        /* =====================================================
+           1️⃣ AGREE PRICE
+           ===================================================== */
+        @PostMapping("/agree/{entryId}/{farmerId}")
+        public ResponseEntity<?> priceAgree(
+                @RequestHeader("Authorization") String authHeader,
+                @PathVariable String entryId,
+                @PathVariable String farmerId
+        ) {
+
+            if (!jwtUtil.validateToken(authHeader.replace("Bearer", "").trim())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+            }
+
+            FarmerEntry entry = farmerEntryRepository.findById(entryId)
+                    .orElseThrow(() -> new RuntimeException("Price entry not found"));
+
+            if (entry.getFeedback().getVotedFarmers() == null) {
+                entry.getFeedback().setVotedFarmers(new ArrayList<>());
+            }
+
+            if (entry.getFeedback().getVotedFarmers().contains(farmerId)) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("You have already voted");
+            }
+
+            entry.getFeedback().setAgreeCount(
+                    entry.getFeedback().getAgreeCount() + 1
+            );
+            entry.getFeedback().getVotedFarmers().add(farmerId);
+
+            farmerEntryRepository.save(entry);
+            notificationService.notifyPriceAgree(entry, farmerId);
+            return ResponseEntity.ok("Price agreed successfully");
+        }
+
+        /* =====================================================
+           2️⃣ DISAGREE PRICE
+           ===================================================== */
+        @PostMapping("/disagree/{entryId}/{farmerId}")
+        public ResponseEntity<?> priceDisAgree(
+                @RequestHeader("Authorization") String authHeader,
+                @PathVariable String entryId,
+                @PathVariable String farmerId
+        ) {
+
+            if (!jwtUtil.validateToken(authHeader.replace("Bearer", "").trim())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+            }
+
+            FarmerEntry entry = farmerEntryRepository.findById(entryId)
+                    .orElseThrow(() -> new RuntimeException("Price entry not found"));
+
+            if (entry.getFeedback().getVotedFarmers() == null) {
+                entry.getFeedback().setVotedFarmers(new ArrayList<>());
+            }
+
+            if (entry.getFeedback().getVotedFarmers().contains(farmerId)) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("You have already voted");
+            }
+
+            entry.getFeedback().setDisagreeCount(
+                    entry.getFeedback().getDisagreeCount() + 1
+            );
+            entry.getFeedback().getVotedFarmers().add(farmerId);
+
+            farmerEntryRepository.save(entry);
+            notificationService.notifyPriceDisAgree(entry, farmerId);
+
+            return ResponseEntity.ok("Price disagreed successfully");
+        }
+
+        /* =====================================================
+           3️⃣ GET AGREE COUNT
+           ===================================================== */
+        @GetMapping("/agree-count/{entryId}")
+        public ResponseEntity<?> getAgreeCount(
+                @RequestHeader("Authorization") String authHeader,
+                @PathVariable String entryId
+        ) {
+
+            if (!jwtUtil.validateToken(authHeader.replace("Bearer", "").trim())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+            }
+
+            FarmerEntry entry = farmerEntryRepository.findById(entryId)
+                    .orElseThrow(() -> new RuntimeException("Price entry not found"));
+
+            return ResponseEntity.ok(entry.getFeedback().getAgreeCount());
+        }
+
+        /* =====================================================
+           4️⃣ GET DISAGREE COUNT
+           ===================================================== */
+        @GetMapping("/disagree-count/{entryId}")
+        public ResponseEntity<?> getDisAgreeCount(
+                @RequestHeader("Authorization") String authHeader,
+                @PathVariable String entryId
+        ) {
+
+            if (!jwtUtil.validateToken(authHeader.replace("Bearer", "").trim())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+            }
+
+            FarmerEntry entry = farmerEntryRepository.findById(entryId)
+                    .orElseThrow(() -> new RuntimeException("Price entry not found"));
+
+            return ResponseEntity.ok(entry.getFeedback().getDisagreeCount());
+        }
+
+
 }
