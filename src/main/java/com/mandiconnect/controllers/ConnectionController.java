@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -43,24 +42,41 @@ public class ConnectionController {
 
     // Accept connection
     @PostMapping("/accept/{connectionId}")
-    public ResponseEntity<?> accept(@PathVariable String connectionId) {
+    public ResponseEntity<?> accept(@PathVariable String connectionId ,  @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(401).body("UNAUTHORIZED");
+        }
+
         return ResponseEntity.ok(connectionService.acceptRequest(connectionId));
     }
 
     // Reject connection
     @PostMapping("/reject/{connectionId}")
-    public ResponseEntity<?> reject(@PathVariable String connectionId) {
+    public ResponseEntity<?> reject(@PathVariable String connectionId ,  @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(401).body("UNAUTHORIZED");
+        }
         return ResponseEntity.ok(connectionService.rejectRequest(connectionId));
     }
 
     // Get incoming requests
     @GetMapping("/incoming/{userId}")
-    public ResponseEntity<List<Connection>> incoming(@PathVariable String userId) {
+    public ResponseEntity<?> incoming(@PathVariable String userId,  @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(401).body("UNAUTHORIZED");
+        }
         return ResponseEntity.ok(connectionService.getIncomingRequests(userId));
     }
 
     @GetMapping("/sent/{userId}")
-    public ResponseEntity<?> sent(@RequestHeader("Authorization") String auth , @PathVariable String userId ) {
+    public ResponseEntity<?> sent(@RequestHeader("Authorization") String auth , @PathVariable String userId ,  @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(401).body("UNAUTHORIZED");
+        }
         return ResponseEntity.ok(
                 connectionService.getSentRequests(userId)
         );
