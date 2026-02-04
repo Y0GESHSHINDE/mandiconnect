@@ -29,6 +29,25 @@ public class FarmerController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    // New: Verify email
+    @GetMapping("/verify")
+    public ResponseEntity<?> verifyFarmer(@RequestParam("token") String token) {
+        VerificationToken verificationToken = tokenRepository.findByToken(token).orElseThrow(() -> new RuntimeException("Invalid token"));
+
+        if (verificationToken.getExpiryDate().before(new Date())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Token expired!"));
+        }
+
+        Farmer farmer = farmerRepository.findById(verificationToken.getFarmerId()).orElseThrow(() -> new RuntimeException("Farmer not found"));
+
+        farmer.setVerified(true);
+        farmerRepository.save(farmer);
+
+        tokenRepository.delete(verificationToken);
+
+        return ResponseEntity.ok(Map.of("message", "Email verified! You can now log in."));
+    }
+
     //    To Get All Farmers
     @GetMapping("/getFarmers")
     public List<Farmer> getAllFarmers() {
@@ -38,27 +57,24 @@ public class FarmerController {
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getFarmerById(@PathVariable String id) {
 
-        return farmerRepository.findById(id)
-                .map(farmer -> {
+        return farmerRepository.findById(id).map(farmer -> {
 
-                    Map<String, Object> response = new HashMap<>();
+            Map<String, Object> response = new HashMap<>();
 
-                    response.put("id", farmer.getId());
-                    response.put("name", farmer.getName());
-                    response.put("mobile", farmer.getMobile());
-                    response.put("email", farmer.getEmail());
-                    response.put("role", farmer.getRole());
-                    response.put("verified", farmer.isVerified());
-                    response.put("farmerAddress", farmer.getFarmerAddress());
-                    response.put("farmDetails", farmer.getFarmDetails());
+            response.put("id", farmer.getId());
+            response.put("name", farmer.getName());
+            response.put("mobile", farmer.getMobile());
+            response.put("email", farmer.getEmail());
+            response.put("role", farmer.getRole());
+            response.put("verified", farmer.isVerified());
+            response.put("farmerAddress", farmer.getFarmerAddress());
+            response.put("farmDetails", farmer.getFarmDetails());
 
-                    // password is NOT added
+            // password is NOT added
 
-                    return ResponseEntity.ok(response);
-                })
-                .orElse(ResponseEntity.notFound().build());
+            return ResponseEntity.ok(response);
+        }).orElse(ResponseEntity.notFound().build());
     }
-
 
     // New: Signup farmer (with email verification)
     @PostMapping("/signup")
@@ -67,11 +83,8 @@ public class FarmerController {
         String email = farmer.getEmail().toLowerCase();
         String phoneNo = farmer.getMobile();
 
-        if (farmerRepository.existsByEmail(email) ||
-                farmerRepository.existsByMobile(phoneNo)) {
-            return ResponseEntity
-                    .status(HttpStatus.CONFLICT)
-                    .body("Email or Mobile already exists!");
+        if (farmerRepository.existsByEmail(email) || farmerRepository.existsByMobile(phoneNo)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", "Email or Mobile already exists!"));
         }
 
         farmer.setEmail(email);
@@ -84,35 +97,12 @@ public class FarmerController {
         VerificationToken verificationToken = new VerificationToken();
         verificationToken.setToken(token);
         verificationToken.setFarmerId(savedFarmer.getId());
-        verificationToken.setExpiryDate(
-                new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000)
-        );
+        verificationToken.setExpiryDate(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000));
         tokenRepository.save(verificationToken);
 
         emailService.sendVerificationEmail(savedFarmer.getEmail(), token);
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body("Farmer registered! Please verify your email.");
-    }
-
-    // New: Verify email
-    @GetMapping("/verify")
-    public String verifyFarmer(@RequestParam("token") String token) {
-        VerificationToken verificationToken = tokenRepository.findByToken(token).orElseThrow(() -> new RuntimeException("Invalid token"));
-
-        if (verificationToken.getExpiryDate().before(new Date())) {
-            return "Token expired!";
-        }
-
-        Farmer farmer = farmerRepository.findById(verificationToken.getFarmerId()).orElseThrow(() -> new RuntimeException("Farmer not found"));
-
-        farmer.setVerified(true);
-        farmerRepository.save(farmer);
-
-        tokenRepository.delete(verificationToken);
-
-        return ("Email verified! You can now log in.");
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", "Farmer registered! Please verify your email."));
     }
 
     //Login Farmer Api with JWT token
@@ -124,21 +114,21 @@ public class FarmerController {
 
         // 1. Check if email exists
         if (!farmerRepository.existsByEmail(email)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Invalid email or password"));
         }
 
         // 2. Find farmer by email
         Optional<Farmer> farmerOpt = farmerRepository.findByEmail(email);
 
         if (farmerOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Invalid email or password"));
         }
 
         Farmer farmer = farmerOpt.get();
 
         // 3. Check if farmer is verified
         if (!farmer.isVerified()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Please verify your email first");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Please verify your email first"));
         }
 
         // 4. Compare passwords
@@ -150,30 +140,22 @@ public class FarmerController {
             response.put("token", Token);
             return ResponseEntity.ok().body(response);
         } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Invalid email or password"));
         }
     }
 
     //Update Farmer Info API
     @PatchMapping("/update/{id}")
-    public ResponseEntity<?> updateFarmer(
-            @PathVariable String id,
-            @RequestBody Farmer updateData,
-            @RequestHeader("Authorization") String authHeader
-    ) {
+    public ResponseEntity<?> updateFarmer(@PathVariable String id, @RequestBody Farmer updateData, @RequestHeader("Authorization") String authHeader) {
 
         String token = authHeader.replace("Bearer", "").trim();
         if (!jwtUtil.validateToken(token)) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid JWT token");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Invalid JWT token"));
         }
 
         Optional<Farmer> optionalFarmer = farmerRepository.findById(id);
         if (optionalFarmer.isEmpty()) {
-            return ResponseEntity
-                    .status(HttpStatus.NOT_FOUND)
-                    .body("Farmer not found");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Farmer not found"));
         }
 
         Farmer existing = optionalFarmer.get();
@@ -184,9 +166,7 @@ public class FarmerController {
         }
 
         if (updateData.getPassword() != null && !updateData.getPassword().isBlank()) {
-            existing.setPassword(
-                    passwordEncoder.encode(updateData.getPassword())
-            );
+            existing.setPassword(passwordEncoder.encode(updateData.getPassword()));
         }
 
         // ---------------- ADDRESS ----------------
@@ -199,11 +179,9 @@ public class FarmerController {
                 existing.setFarmerAddress(exAddr);
             }
 
-            if (inAddr.getCity() != null && !inAddr.getCity().isBlank())
-                exAddr.setCity(inAddr.getCity().trim());
+            if (inAddr.getCity() != null && !inAddr.getCity().isBlank()) exAddr.setCity(inAddr.getCity().trim());
 
-            if (inAddr.getState() != null && !inAddr.getState().isBlank())
-                exAddr.setState(inAddr.getState().trim());
+            if (inAddr.getState() != null && !inAddr.getState().isBlank()) exAddr.setState(inAddr.getState().trim());
 
             if (inAddr.getCountry() != null && !inAddr.getCountry().isBlank())
                 exAddr.setCountry(inAddr.getCountry().trim());
@@ -222,42 +200,36 @@ public class FarmerController {
             if (inFarm.getFarmSize() != null && !inFarm.getFarmSize().isBlank())
                 exFarm.setFarmSize(inFarm.getFarmSize().trim());
 
-            if (inFarm.getCropIds() != null && !inFarm.getCropIds().isEmpty())
-                exFarm.setCropIds(inFarm.getCropIds());
+            if (inFarm.getCropIds() != null && !inFarm.getCropIds().isEmpty()) exFarm.setCropIds(inFarm.getCropIds());
 
-            if (inFarm.getPreferredMarketIds() != null &&
-                    !inFarm.getPreferredMarketIds().isEmpty())
+            if (inFarm.getPreferredMarketIds() != null && !inFarm.getPreferredMarketIds().isEmpty())
                 exFarm.setPreferredMarketIds(inFarm.getPreferredMarketIds());
 
-            if (inFarm.getIrrigationType() != null &&
-                    !inFarm.getIrrigationType().isBlank())
+            if (inFarm.getIrrigationType() != null && !inFarm.getIrrigationType().isBlank())
                 exFarm.setIrrigationType(inFarm.getIrrigationType().trim());
 
-            if (inFarm.getSoilType() != null &&
-                    !inFarm.getSoilType().isBlank())
+            if (inFarm.getSoilType() != null && !inFarm.getSoilType().isBlank())
                 exFarm.setSoilType(inFarm.getSoilType().trim());
         }
 
         farmerRepository.save(existing);
 
-        return ResponseEntity.ok("Farmer updated successfully");
+        return ResponseEntity.ok(Map.of("message", "Farmer updated successfully"));
     }
 
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity<?> deleteBuyer(@PathVariable String id , @RequestHeader("Authorization") String authHeader ) {
+    public ResponseEntity<?> deleteBuyer(@PathVariable String id, @RequestHeader("Authorization") String authHeader) {
 
         String token = authHeader.replace("Bearer", "").trim();
         Boolean isTokenValid = jwtUtil.validateToken(token);
 
         if (!isTokenValid) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("JWT Token is Not Valid Login Again");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "JWT Token is Not Valid Login Again"));
         }
 
-        return farmerRepository.findById(id)
-                .map(buyer -> {
-                    farmerRepository.deleteById(id);
-                    return ResponseEntity.ok("Farmer deleted successfully!");
-                })
-                .orElse(ResponseEntity.notFound().build());
+        return farmerRepository.findById(id).map(buyer -> {
+            farmerRepository.deleteById(id);
+            return ResponseEntity.ok(Map.of("message", "Farmer deleted successfully!"));
+        }).orElse(ResponseEntity.notFound().build());
     }
 }
