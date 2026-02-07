@@ -65,33 +65,56 @@ public class BuyerController {
     @PostMapping("/signup")
     public ResponseEntity<?> signUpBuyer(@RequestBody Buyer buyer) {
 
+        // normalize email
         buyer.setEmail(buyer.getEmail().toLowerCase());
 
+        // check email
         if (buyerRepository.existsByEmail(buyer.getEmail())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Email already exists!");
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body("Email already exists!");
         }
 
+        // check mobile
         if (buyerRepository.existsByMobile(buyer.getMobile())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Mobile already exists!");
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body("Mobile already exists!");
         }
 
+        // encode password
         buyer.setPassword(passwordEncoder.encode(buyer.getPassword()));
-        buyer.setVerified(false);
 
+        // default values
+        buyer.setVerified(false);
+        buyer.setRole("BUYER");
+
+        // save buyer
         Buyer savedBuyer = buyerRepository.save(buyer);
 
+        // create verification token
         String token = UUID.randomUUID().toString();
+
         BuyerVerificationToken verificationToken = new BuyerVerificationToken();
         verificationToken.setToken(token);
         verificationToken.setBuyerId(savedBuyer.getId());
-        verificationToken.setExpiryDate(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000));
+        verificationToken.setExpiryDate(
+                new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+        );
+
         tokenRepository.save(verificationToken);
 
-        emailService.sendVerificationEmailForBuyer(savedBuyer.getEmail(), token);
+        // send verification mail
+        emailService.sendVerificationEmailForBuyer(
+                savedBuyer.getEmail(),
+                token
+        );
 
-        return ResponseEntity.status(HttpStatus.CREATED).body("Buyer registered! Please check your email for verification link.");
-
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body("Buyer registered! Please check your email for verification link.");
     }
+
 
     @GetMapping("/verify")
     public String verifyBuyer(@RequestParam("token") String token) {
@@ -118,28 +141,34 @@ public class BuyerController {
         String email = loginRequest.getEmail().toLowerCase();
         String rawPassword = loginRequest.getPassword();
 
+        System.out.println(email + rawPassword);
+
         if (!buyerRepository.existsByEmail(email)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message","Invalid email or password 1 "));
         }
 
         Optional<Buyer> buyerOpt = buyerRepository.findByEmail(email);
 
         if (buyerOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message","Invalid email or password 2"));
         }
 
         Buyer buyer = buyerOpt.get();
 
         if (!buyer.isVerified()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Please verify your email first");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message","Please verify your email first"));
         }
 
         if (passwordEncoder.matches(rawPassword, buyer.getPassword())) {
-            String token = jwtUtil.generateToken(email);
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Login successful");
-            response.put("token", token);
-            return ResponseEntity.ok().body(response);
+            String Token = jwtUtil.generateToken(email);
+            return ResponseEntity.ok(
+                    Map.of(
+                            "userId", buyer.getId(),
+                            "token", Token,
+                            "message", "Login successful"
+                    )
+            );
+
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
         }
@@ -149,12 +178,12 @@ public class BuyerController {
     public ResponseEntity<?> patchUpdateBuyer(@PathVariable String id, @RequestBody Buyer updatedBuyer, @RequestHeader("Authorization") String authHeader) {
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid Authorization header");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message","Missing or invalid Authorization header"));
         }
         String token = authHeader.replace("Bearer", "").trim();
 
         if (!jwtUtil.validateToken(token)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message","Invalid or expired token"));
         }
 
         return buyerRepository.findById(id).map(existingBuyer -> {
@@ -165,7 +194,7 @@ public class BuyerController {
 
             if (updatedBuyer.getMobile() != null) {
                 if (buyerRepository.existsByMobile(updatedBuyer.getMobile()) && !existingBuyer.getMobile().equals(updatedBuyer.getMobile())) {
-                    return ResponseEntity.status(HttpStatus.CONFLICT).body("Mobile already exists!");
+                    return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message","Mobile already exists!"));
                 }
                 existingBuyer.setMobile(updatedBuyer.getMobile());
             }
