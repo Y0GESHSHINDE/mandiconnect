@@ -8,7 +8,10 @@ import com.mandiconnect.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class CommonController {
@@ -23,39 +26,21 @@ public class CommonController {
     private JwtUtil jwtUtil;
 
     @PostMapping("/addMarket")
-    ResponseEntity<?> addMarket(@RequestHeader("Authorization") String authHeader, @RequestBody Market marketData) {
-
-        String token = authHeader.replace("Bearer", "").trim();
-        boolean isVerfied = jwtUtil.validateToken(token);
-
-        if (!isVerfied) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
-        }
+    ResponseEntity<?> addMarket( @RequestBody Market marketData) {
 
         Market savedMarket = marketRepository.save(marketData);
 
-        return ResponseEntity.status(HttpStatus.OK).body(savedMarket);
+        return ResponseEntity.status(HttpStatus.OK).body("Market Added");
     }
 
     @GetMapping("/getAllMarket")
-    ResponseEntity<?> getAllMarket(@RequestHeader("Authorization") String authHeader ){
-        String token = authHeader.replace("Bearer", "").trim();
-        boolean isVerfied = jwtUtil.validateToken(token);
-
+    ResponseEntity<?> getAllMarket(){
         return ResponseEntity.status(HttpStatus.OK).body(marketRepository.findAll());
-
     }
 
     @PostMapping("/addCrop")
-    ResponseEntity<?> addCrop(@RequestHeader("Authorization") String authHeader, @RequestBody Crops cropData) {
-        String token = authHeader.replace("Bearer", "").trim();
-        boolean isVerfied = jwtUtil.validateToken(token);
+    ResponseEntity<?> addCrop( @RequestBody Crops cropData) {
 
-        if (!isVerfied) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
-        }
-
-        // Auto-assign displayUnit based on type
         switch (cropData.getType().toLowerCase()) {
             case "grain":
                 cropData.setDisplayUnit("quintal");
@@ -73,19 +58,12 @@ public class CommonController {
 
         Crops savedCrop = cropRepository.save(cropData);
 
-        return ResponseEntity.status(HttpStatus.OK).body(savedCrop);
+        return ResponseEntity.status(HttpStatus.OK).body("Crop Added");
     }
 
 
     @GetMapping("/getAllCrop")
-    ResponseEntity<?> getAllCrop(@RequestHeader("Authorization") String authHeader){
-        String token = authHeader.replace("Bearer", "").trim();
-        boolean isVerfied = jwtUtil.validateToken(token);
-
-        if (!isVerfied) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
-        }
-
+    ResponseEntity<?> getAllCrop(){
         return ResponseEntity.status(HttpStatus.OK).body(cropRepository.findAll());
     }
 
