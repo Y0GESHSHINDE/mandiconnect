@@ -165,6 +165,21 @@ public class ConnectionService {
         );
     }
 
+    public List<Connection> getAllConnections(String userId, String authenticatedEmail) {
+        AuthenticatedUser actor = authorizeUserAccess(authenticatedEmail, userId);
+
+        List<Connection> connections = new ArrayList<>();
+        connections.addAll(connectionRepository.findBySenderIdOrderByCreatedAtDesc(actor.userId()));
+        connections.addAll(connectionRepository.findByReceiverIdOrderByCreatedAtDesc(actor.userId()));
+
+        List<Connection> prepared = deduplicateAndPrepare(connections);
+        prepared.sort(Comparator
+                .comparing(Connection::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Connection::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .reversed());
+        return prepared;
+    }
+
     public Optional<Connection> getConnectionStatus(
             String authenticatedEmail,
             String senderId,
@@ -178,6 +193,15 @@ public class ConnectionService {
 
         return findExistingConnection(actor.userId(), actor.userType().name(), safeOtherUserId, otherType.name())
                 .map(this::prepareConnection);
+    }
+
+    public Connection getConnectionById(String connectionId, String authenticatedEmail) {
+        Connection connection = connectionRepository.findById(requireValue(connectionId, "connectionId"))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Connection not found"));
+
+        connection = prepareConnection(connection);
+        resolveConnectionActor(connection, authenticatedEmail);
+        return connection;
     }
 
     private Connection handleExistingConnection(

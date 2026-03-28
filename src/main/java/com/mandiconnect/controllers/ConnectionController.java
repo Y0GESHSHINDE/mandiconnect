@@ -77,6 +77,24 @@ public class ConnectionController {
         return ResponseEntity.ok(connectionService.getSentRequests(userId, email));
     }
 
+    @GetMapping("/all/{userId}")
+    public ResponseEntity<?> all(
+            @PathVariable String userId,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        String email = extractAuthenticatedEmail(authHeader);
+        return ResponseEntity.ok(connectionService.getAllConnections(userId, email));
+    }
+
+    @GetMapping("/{connectionId}")
+    public ResponseEntity<?> getById(
+            @PathVariable String connectionId,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        String email = extractAuthenticatedEmail(authHeader);
+        return ResponseEntity.ok(connectionService.getConnectionById(connectionId, email));
+    }
+
     @GetMapping("/status")
     public ResponseEntity<?> status(
             @RequestHeader("Authorization") String authHeader,

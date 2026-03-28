@@ -19,5 +19,7 @@ public interface ConnectionRepository extends MongoRepository<Connection, String
 
     List<Connection> findByReceiverIdAndStatusOrderByCreatedAtDesc(String receiverId, String status);
 
+    List<Connection> findByReceiverIdOrderByCreatedAtDesc(String receiverId);
+
     List<Connection> findBySenderIdOrderByCreatedAtDesc(String senderId);
 }
