@@ -61,12 +61,10 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
     }
 
     private String extractEmail(StompHeaderAccessor accessor) {
-        List<String> authorizationHeaders = accessor.getNativeHeader("Authorization");
-        if (authorizationHeaders == null || authorizationHeaders.isEmpty()) {
+        String rawHeader = extractAuthorizationHeader(accessor);
+        if (rawHeader == null || rawHeader.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing websocket Authorization header");
         }
-
-        String rawHeader = authorizationHeaders.get(0);
         if (rawHeader == null || !rawHeader.startsWith("Bearer ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid websocket Authorization header");
         }
@@ -77,5 +75,27 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         }
 
         return jwtUtil.getEmailFromToken(token);
+    }
+
+    private String extractAuthorizationHeader(StompHeaderAccessor accessor) {
+        List<String> authorizationHeaders = accessor.getNativeHeader("Authorization");
+        if (authorizationHeaders != null && !authorizationHeaders.isEmpty()) {
+            return authorizationHeaders.get(0);
+        }
+
+        List<String> lowerCaseHeaders = accessor.getNativeHeader("authorization");
+        if (lowerCaseHeaders != null && !lowerCaseHeaders.isEmpty()) {
+            return lowerCaseHeaders.get(0);
+        }
+
+        Object sessionAuthorization = accessor.getSessionAttributes() != null
+                ? accessor.getSessionAttributes().get(WebSocketHandshakeAuthInterceptor.SESSION_AUTHORIZATION_KEY)
+                : null;
+
+        if (sessionAuthorization instanceof String value && !value.isBlank()) {
+            return value;
+        }
+
+        return null;
     }
 }
