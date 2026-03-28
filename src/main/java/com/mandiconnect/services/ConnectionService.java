@@ -3,14 +3,17 @@ package com.mandiconnect.services;
 import com.mandiconnect.models.Buyer;
 import com.mandiconnect.models.BuyerDemands;
 import com.mandiconnect.models.Connection;
+import com.mandiconnect.models.Crops;
 import com.mandiconnect.models.CropListing;
 import com.mandiconnect.models.Farmer;
 import com.mandiconnect.repositories.BuyerDemandRepository;
 import com.mandiconnect.repositories.BuyerRepository;
 import com.mandiconnect.repositories.ConnectionRepository;
 import com.mandiconnect.repositories.CropListingRepository;
+import com.mandiconnect.repositories.CropRepository;
 import com.mandiconnect.repositories.FarmerRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ConnectionService {
 
@@ -34,6 +38,9 @@ public class ConnectionService {
     private final FarmerRepository farmerRepository;
     private final BuyerDemandRepository buyerDemandRepository;
     private final CropListingRepository cropListingRepository;
+    private final CropRepository cropRepository;
+    private final NotificationService notificationService;
+    private final ChatService chatService;
 
     public Connection sendRequest(
             String authenticatedEmail,
@@ -64,30 +71,38 @@ public class ConnectionService {
                 resolvedContext.receiver().userType().name()
         ).map(this::prepareConnection).orElse(null);
 
+        Connection savedConnection;
         if (existingConnection != null) {
-            return handleExistingConnection(existingConnection, sender, resolvedContext, now);
+            savedConnection = handleExistingConnection(existingConnection, sender, resolvedContext, now);
+        } else {
+            Connection newConnection = Connection.builder()
+                    .pairKey(Connection.buildPairKey(
+                            sender.userId(),
+                            sender.userType().name(),
+                            resolvedContext.receiver().userId(),
+                            resolvedContext.receiver().userType().name()
+                    ))
+                    .participantKeys(buildParticipantKeys(sender, resolvedContext.receiver()))
+                    .participants(buildParticipants(sender, resolvedContext.receiver()))
+                    .requestedByUserId(sender.userId())
+                    .requestedByUserType(sender.userType())
+                    .status(Connection.ConnectionStatus.PENDING.name())
+                    .requestedAt(now)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+
+            newConnection.addContext(resolvedContext.context());
+            newConnection.syncLegacyFields();
+            savedConnection = connectionRepository.save(newConnection);
         }
 
-        Connection newConnection = Connection.builder()
-                .pairKey(Connection.buildPairKey(
-                        sender.userId(),
-                        sender.userType().name(),
-                        resolvedContext.receiver().userId(),
-                        resolvedContext.receiver().userType().name()
-                ))
-                .participantKeys(buildParticipantKeys(sender, resolvedContext.receiver()))
-                .participants(buildParticipants(sender, resolvedContext.receiver()))
-                .requestedByUserId(sender.userId())
-                .requestedByUserType(sender.userType())
-                .status(Connection.ConnectionStatus.PENDING.name())
-                .requestedAt(now)
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
+        if (Connection.ConnectionStatus.PENDING.name().equals(savedConnection.getNormalizedStatus())
+                && isRequester(savedConnection, sender)) {
+            notifyConnectionRequestReceived(savedConnection);
+        }
 
-        newConnection.addContext(resolvedContext.context());
-        newConnection.syncLegacyFields();
-        return connectionRepository.save(newConnection);
+        return savedConnection;
     }
 
     public Connection acceptRequest(String connectionId, String authenticatedEmail) {
@@ -113,7 +128,10 @@ public class ConnectionService {
         connection.setUpdatedAt(now);
         connection.syncLegacyFields();
 
-        return connectionRepository.save(connection);
+        Connection savedConnection = connectionRepository.save(connection);
+        savedConnection = attachChatRoom(savedConnection);
+        notifyConnectionAccepted(savedConnection);
+        return savedConnection;
     }
 
     public Connection rejectRequest(String connectionId, String authenticatedEmail) {
@@ -139,7 +157,9 @@ public class ConnectionService {
         connection.setUpdatedAt(now);
         connection.syncLegacyFields();
 
-        return connectionRepository.save(connection);
+        Connection savedConnection = connectionRepository.save(connection);
+        notifyConnectionRejected(savedConnection);
+        return savedConnection;
     }
 
     public List<Connection> getIncomingRequests(String userId, String authenticatedEmail) {
@@ -335,7 +355,7 @@ public class ConnectionService {
             Farmer farmer = farmerRepository.findById(cropListing.getFarmer().getId())
                     .orElse(cropListing.getFarmer());
 
-            context.setCropId(cropListing.getCrop() != null ? cropListing.getCrop().getId() : null);
+            hydrateCropContext(context, cropListing);
             return new ResolvedContext(context, mapFarmer(farmer));
         }
 
@@ -347,7 +367,7 @@ public class ConnectionService {
         Buyer buyer = buyerRepository.findById(requireValue(demand.getBuyerId(), "buyerId"))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Buyer not found for demand"));
 
-        context.setCropId(normalizeOptionalValue(demand.getCropId()));
+        hydrateDemandContext(context, demand);
         return new ResolvedContext(context, mapBuyer(buyer));
     }
 
@@ -482,6 +502,12 @@ public class ConnectionService {
             }
         }
 
+        if (connection.getContexts() != null) {
+            for (Connection.ContextRef context : connection.getContexts()) {
+                changed = enrichContextSnapshotIfPossible(context) || changed;
+            }
+        }
+
         if (changed) {
             connection.setUpdatedAt(LocalDateTime.now());
             connection.syncLegacyFields();
@@ -502,6 +528,213 @@ public class ConnectionService {
         connection.setParticipants(buildParticipants(sender, receiver));
     }
 
+    private boolean enrichContextSnapshotIfPossible(Connection.ContextRef context) {
+        if (context == null || context.getType() == null || context.getRefId() == null || context.getRefId().isBlank()) {
+            return false;
+        }
+
+        if (context.getType() == Connection.ContextType.CROP) {
+            return cropListingRepository.findById(context.getRefId())
+                    .map(cropListing -> hydrateCropContext(context, cropListing))
+                    .orElse(false);
+        }
+
+        return buyerDemandRepository.findById(context.getRefId())
+                .map(demand -> hydrateDemandContext(context, demand))
+                .orElse(false);
+    }
+
+    private boolean hydrateCropContext(Connection.ContextRef context, CropListing cropListing) {
+        Crops crop = cropListing.getCrop();
+        CropListing.Location location = cropListing.getLocation();
+
+        String cropId = crop != null ? normalizeOptionalValue(crop.getId()) : normalizeOptionalValue(context.getCropId());
+        String cropName = crop != null ? normalizeOptionalValue(crop.getName()) : normalizeOptionalValue(context.getCropName());
+        String cropVariety = crop != null ? normalizeOptionalValue(crop.getVariety()) : normalizeOptionalValue(context.getCropVariety());
+        Double quantity = cropListing.getQuantity();
+        String unit = normalizeOptionalValue(cropListing.getUnit());
+        Double price = cropListing.getPrice();
+        String currency = "INR";
+        String locationCity = location != null ? normalizeOptionalValue(location.getCity()) : null;
+        String locationState = location != null ? normalizeOptionalValue(location.getState()) : null;
+        String photoUrl = normalizeOptionalValue(cropListing.getPhotoUrl());
+        String title = buildContextTitle(Connection.ContextType.CROP, cropName, cropVariety);
+        String subtitle = buildContextSubtitle(Connection.ContextType.CROP, quantity, unit, price, currency, locationCity, locationState);
+
+        return applyContextSnapshot(
+                context,
+                cropId,
+                cropName,
+                cropVariety,
+                title,
+                subtitle,
+                quantity,
+                unit,
+                price,
+                currency,
+                locationCity,
+                locationState,
+                photoUrl
+        );
+    }
+
+    private boolean hydrateDemandContext(Connection.ContextRef context, BuyerDemands demand) {
+        String cropId = normalizeOptionalValue(demand.getCropId());
+        Crops crop = cropId != null ? cropRepository.findById(cropId).orElse(null) : null;
+        Double quantity = demand.getRequiredQuantity() != null ? demand.getRequiredQuantity().getValue() : null;
+        String unit = demand.getRequiredQuantity() != null ? normalizeOptionalValue(demand.getRequiredQuantity().getUnit()) : null;
+        Double price = demand.getExpectedPrice() != null ? demand.getExpectedPrice().getValue() : null;
+        String currency = demand.getExpectedPrice() != null ? normalizeOptionalValue(demand.getExpectedPrice().getCurrency()) : "INR";
+        String cropName = crop != null ? normalizeOptionalValue(crop.getName()) : normalizeOptionalValue(context.getCropName());
+        String cropVariety = crop != null ? normalizeOptionalValue(crop.getVariety()) : normalizeOptionalValue(context.getCropVariety());
+        String title = buildContextTitle(Connection.ContextType.DEMAND, cropName, cropVariety);
+        String subtitle = buildContextSubtitle(Connection.ContextType.DEMAND, quantity, unit, price, currency, null, null);
+
+        return applyContextSnapshot(
+                context,
+                cropId,
+                cropName,
+                cropVariety,
+                title,
+                subtitle,
+                quantity,
+                unit,
+                price,
+                currency,
+                null,
+                null,
+                null
+        );
+    }
+
+    private boolean applyContextSnapshot(
+            Connection.ContextRef context,
+            String cropId,
+            String cropName,
+            String cropVariety,
+            String title,
+            String subtitle,
+            Double quantity,
+            String unit,
+            Double price,
+            String currency,
+            String locationCity,
+            String locationState,
+            String photoUrl
+    ) {
+        boolean changed = false;
+        changed = setIfDifferent(context.getCropId(), cropId, context::setCropId) || changed;
+        changed = setIfDifferent(context.getCropName(), cropName, context::setCropName) || changed;
+        changed = setIfDifferent(context.getCropVariety(), cropVariety, context::setCropVariety) || changed;
+        changed = setIfDifferent(context.getTitle(), title, context::setTitle) || changed;
+        changed = setIfDifferent(context.getSubtitle(), subtitle, context::setSubtitle) || changed;
+        changed = setIfDifferent(context.getQuantity(), quantity, context::setQuantity) || changed;
+        changed = setIfDifferent(context.getUnit(), unit, context::setUnit) || changed;
+        changed = setIfDifferent(context.getPrice(), price, context::setPrice) || changed;
+        changed = setIfDifferent(context.getCurrency(), currency, context::setCurrency) || changed;
+        changed = setIfDifferent(context.getLocationCity(), locationCity, context::setLocationCity) || changed;
+        changed = setIfDifferent(context.getLocationState(), locationState, context::setLocationState) || changed;
+        changed = setIfDifferent(context.getPhotoUrl(), photoUrl, context::setPhotoUrl) || changed;
+        return changed;
+    }
+
+    private String buildContextTitle(Connection.ContextType type, String cropName, String cropVariety) {
+        String baseCropName = cropName != null ? cropName : (type == Connection.ContextType.DEMAND ? "Buyer demand" : "Crop listing");
+        if (cropVariety == null || cropVariety.isBlank()) {
+            return baseCropName;
+        }
+        return baseCropName + " (" + cropVariety + ")";
+    }
+
+    private String buildContextSubtitle(
+            Connection.ContextType type,
+            Double quantity,
+            String unit,
+            Double price,
+            String currency,
+            String locationCity,
+            String locationState
+    ) {
+        List<String> parts = new ArrayList<>();
+
+        String quantityLabel = formatQuantity(quantity, unit);
+        if (quantityLabel != null) {
+            parts.add(type == Connection.ContextType.DEMAND ? "Need " + quantityLabel : quantityLabel);
+        }
+
+        String priceLabel = formatPrice(price, currency);
+        if (priceLabel != null) {
+            parts.add(type == Connection.ContextType.DEMAND ? "Expected " + priceLabel : priceLabel);
+        }
+
+        String locationLabel = joinNonBlank(locationCity, locationState);
+        if (locationLabel != null && type == Connection.ContextType.CROP) {
+            parts.add(locationLabel);
+        }
+
+        if (parts.isEmpty()) {
+            return null;
+        }
+        return String.join(" | ", parts);
+    }
+
+    private String formatQuantity(Double quantity, String unit) {
+        if (quantity == null) {
+            return null;
+        }
+
+        String quantityText = trimDecimal(quantity);
+        String safeUnit = normalizeOptionalValue(unit);
+        return safeUnit == null ? quantityText : quantityText + " " + safeUnit;
+    }
+
+    private String formatPrice(Double price, String currency) {
+        if (price == null) {
+            return null;
+        }
+
+        String safeCurrency = normalizeOptionalValue(currency);
+        String prefix = safeCurrency == null ? "INR" : safeCurrency.toUpperCase(Locale.ROOT);
+        return prefix + " " + trimDecimal(price);
+    }
+
+    private String trimDecimal(Double value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (Math.floor(value) == value) {
+            return String.valueOf(value.longValue());
+        }
+
+        String text = value.toString();
+        while (text.contains(".") && (text.endsWith("0") || text.endsWith("."))) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text;
+    }
+
+    private String joinNonBlank(String first, String second) {
+        String safeFirst = normalizeOptionalValue(first);
+        String safeSecond = normalizeOptionalValue(second);
+
+        if (safeFirst == null) {
+            return safeSecond;
+        }
+        if (safeSecond == null) {
+            return safeFirst;
+        }
+        return safeFirst + ", " + safeSecond;
+    }
+
+    private <T> boolean setIfDifferent(T currentValue, T newValue, java.util.function.Consumer<T> setter) {
+        if (Objects.equals(currentValue, newValue)) {
+            return false;
+        }
+        setter.accept(newValue);
+        return true;
+    }
+
     private List<Connection> deduplicateAndPrepare(List<Connection> connections) {
         List<Connection> prepared = new ArrayList<>();
         Set<String> seenIds = new LinkedHashSet<>();
@@ -516,6 +749,51 @@ public class ConnectionService {
 
         prepared.sort(Comparator.comparing(Connection::getCreatedAt).reversed());
         return prepared;
+    }
+
+    private void notifyConnectionRequestReceived(Connection connection) {
+        try {
+            notificationService.notifyConnectionRequestReceived(connection);
+        } catch (Exception ex) {
+            log.warn("Failed to create connection request notification for connection {}", connection.getId(), ex);
+        }
+    }
+
+    private void notifyConnectionAccepted(Connection connection) {
+        try {
+            notificationService.notifyConnectionAccepted(connection);
+        } catch (Exception ex) {
+            log.warn("Failed to create connection accepted notification for connection {}", connection.getId(), ex);
+        }
+    }
+
+    private void notifyConnectionRejected(Connection connection) {
+        try {
+            notificationService.notifyConnectionRejected(connection);
+        } catch (Exception ex) {
+            log.warn("Failed to create connection rejected notification for connection {}", connection.getId(), ex);
+        }
+    }
+
+    private Connection attachChatRoom(Connection connection) {
+        try {
+            return connection.getChatId() == null || connection.getChatId().isBlank()
+                    ? updateConnectionChatId(connection, chatService.ensureChatRoomForConnection(connection).getId())
+                    : connection;
+        } catch (Exception ex) {
+            log.warn("Failed to attach chat room for connection {}", connection.getId(), ex);
+            return connection;
+        }
+    }
+
+    private Connection updateConnectionChatId(Connection connection, String chatId) {
+        if (chatId == null || chatId.isBlank() || Objects.equals(connection.getChatId(), chatId)) {
+            return connection;
+        }
+
+        connection.setChatId(chatId);
+        connection.setUpdatedAt(LocalDateTime.now());
+        return connectionRepository.save(connection);
     }
 
     private List<AuthenticatedUser> resolveAuthenticatedUsers(String authenticatedEmail) {

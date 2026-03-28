@@ -237,6 +237,17 @@ public class Connection {
         private ContextType type;
         private String refId;
         private String cropId;
+        private String cropName;
+        private String cropVariety;
+        private String title;
+        private String subtitle;
+        private Double quantity;
+        private String unit;
+        private Double price;
+        private String currency;
+        private String locationCity;
+        private String locationState;
+        private String photoUrl;
 
         @Builder.Default
         private LocalDateTime addedAt = LocalDateTime.now();

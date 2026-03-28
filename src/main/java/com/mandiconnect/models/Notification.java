@@ -27,6 +27,12 @@ public class Notification {
 
     private String cropId;
     private String marketId;
+    private String connectionId;
+    private String referenceType;
+    private String referenceId;
+    private String actorUserId;
+    private String actorUserRole;
+    private String actorName;
 
     private boolean isRead = false;
     private LocalDateTime createdAt;
