@@ -39,6 +39,9 @@ public class WebSocketHandshakeAuthInterceptor implements HandshakeInterceptor {
 
         if (authorizationHeader != null && !authorizationHeader.isBlank()) {
             attributes.put(SESSION_AUTHORIZATION_KEY, authorizationHeader);
+            log.info("WebSocket handshake auth captured for session");
+        } else {
+            log.warn("WebSocket handshake missing auth header/token");
         }
 
         return true;

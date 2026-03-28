@@ -2,6 +2,7 @@ package com.mandiconnect.config;
 
 import com.mandiconnect.utils.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -17,6 +18,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
     private static final String SESSION_EMAIL_KEY = "authenticatedEmail";
@@ -39,6 +41,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
             String email = extractEmail(accessor);
             accessor.setUser(new StompPrincipal(email));
             accessor.getSessionAttributes().put(SESSION_EMAIL_KEY, email);
+            log.info("WebSocket STOMP CONNECT authenticated for {}", email);
             return message;
         }
 
@@ -54,6 +57,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
         if (accessor.getUser() == null
                 && (StompCommand.SEND.equals(command) || StompCommand.SUBSCRIBE.equals(command))) {
+            log.warn("WebSocket {} denied because session user is missing", command);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized websocket session");
         }
 

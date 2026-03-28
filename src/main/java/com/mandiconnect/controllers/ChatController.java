@@ -60,6 +60,25 @@ public class ChatController {
         return ResponseEntity.ok(chatService.getChatMessages(chatId, email, page, size));
     }
 
+    @PostMapping("/{chatId}/messages")
+    public ResponseEntity<?> sendTextMessage(
+            @PathVariable String chatId,
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody SendTextMessageRequest body
+    ) {
+        String email = extractAuthenticatedEmail(authHeader);
+        ChatService.ChatDelivery delivery = chatService.sendTextMessage(
+                chatId,
+                email,
+                body.text(),
+                body.referenceType(),
+                body.referenceId()
+        );
+
+        messagingTemplate.convertAndSend("/topic/chat/" + delivery.chat().getId(), delivery);
+        return ResponseEntity.ok(delivery);
+    }
+
     @PatchMapping("/{chatId}/read")
     public ResponseEntity<?> markChatAsRead(
             @PathVariable String chatId,
@@ -110,5 +129,13 @@ public class ChatController {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record OpenChatRequest(String connectionId) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record SendTextMessageRequest(
+            String text,
+            String referenceType,
+            String referenceId
+    ) {
     }
 }
