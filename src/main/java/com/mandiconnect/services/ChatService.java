@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -50,6 +51,7 @@ public class ChatService {
     private final CropListingRepository cropListingRepository;
     private final CropRepository cropRepository;
     private final FileUploadService fileUploadService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public ChatRoom openChat(String connectionId, String authenticatedEmail) {
         Connection connection = findAuthorizedConnection(connectionId, authenticatedEmail);
@@ -211,6 +213,47 @@ public class ChatService {
         ChatRoom savedRoom = chatRoomRepository.save(room);
 
         return new ChatReadReceipt(savedRoom, unreadMessages.size(), now);
+    }
+
+    public ChatDelivery sendSystemMessage(
+            String chatId,
+            String text,
+            String referenceType,
+            String referenceId,
+            String actedByUserId
+    ) {
+        ChatRoom room = chatRoomRepository.findById(requireValue(chatId, "chatId"))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat room not found"));
+
+        if (!ChatRoom.ChatStatus.ACTIVE.name().equalsIgnoreCase(room.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chat room is not active");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
+                .chatId(room.getId())
+                .connectionId(room.getConnectionId())
+                .senderId("SYSTEM")
+                .senderRole("SYSTEM")
+                .type(ChatMessage.MessageType.SYSTEM.name())
+                .text(requireValue(text, "text"))
+                .referenceType(normalizeOptionalValue(referenceType))
+                .referenceId(normalizeOptionalValue(referenceId))
+                .createdAt(now)
+                .build());
+
+        room.setLastMessageId(message.getId());
+        room.setLastMessageText(message.getText());
+        room.setLastMessageType(message.getType());
+        room.setLastMessageSenderId(message.getSenderId());
+        room.setLastMessageAt(message.getCreatedAt());
+        applySystemUnreadIncrement(room, actedByUserId);
+        room.setUpdatedAt(message.getCreatedAt());
+        ChatRoom savedRoom = chatRoomRepository.save(room);
+
+        ChatDelivery delivery = new ChatDelivery(savedRoom, message);
+        messagingTemplate.convertAndSend("/topic/chat/" + savedRoom.getId(), delivery);
+        return delivery;
     }
 
     public ChatRoom ensureChatRoomForConnection(Connection connection) {
@@ -808,6 +851,38 @@ public class ChatService {
 
     private int safeUnread(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private void applySystemUnreadIncrement(ChatRoom room, String actedByUserId) {
+        String buyerId = getParticipantId(room, Connection.UserType.BUYER.name());
+        String farmerId = getParticipantId(room, Connection.UserType.FARMER.name());
+
+        if (actedByUserId != null && actedByUserId.equals(buyerId)) {
+            room.setUnreadCountFarmer(safeUnread(room.getUnreadCountFarmer()) + 1);
+            return;
+        }
+
+        if (actedByUserId != null && actedByUserId.equals(farmerId)) {
+            room.setUnreadCountBuyer(safeUnread(room.getUnreadCountBuyer()) + 1);
+            return;
+        }
+
+        room.setUnreadCountBuyer(safeUnread(room.getUnreadCountBuyer()) + 1);
+        room.setUnreadCountFarmer(safeUnread(room.getUnreadCountFarmer()) + 1);
+    }
+
+    private String getParticipantId(ChatRoom room, String userType) {
+        if (room.getParticipants() == null) {
+            return null;
+        }
+
+        return room.getParticipants().stream()
+                .filter(Objects::nonNull)
+                .filter(participant -> userType.equalsIgnoreCase(participant.getUserType()))
+                .map(ChatRoom.ParticipantSnapshot::getUserId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     private record AuthenticatedUser(String userId, Connection.UserType userType) {

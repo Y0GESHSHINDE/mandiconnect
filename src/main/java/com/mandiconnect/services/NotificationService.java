@@ -4,6 +4,8 @@ import com.mandiconnect.models.Farmer;
 import com.mandiconnect.models.FarmerEntry;
 import com.mandiconnect.models.Notification;
 import com.mandiconnect.models.Connection;
+import com.mandiconnect.models.Order;
+import com.mandiconnect.models.PaymentTransaction;
 import com.mandiconnect.repositories.FarmerRepository;
 import com.mandiconnect.repositories.NotificationRepository;
 import lombok.RequiredArgsConstructor;
@@ -172,6 +174,129 @@ public class NotificationService {
         );
     }
 
+    public void notifyOrderPlaced(Order order) {
+        saveOrderNotification(
+                order.getFarmerId(),
+                "ORDER_PLACED",
+                "New Order Placed",
+                buildPartyName(order.getBuyer()) + " placed " + buildOrderLabel(order),
+                order,
+                order.getBuyer(),
+                null
+        );
+    }
+
+    public void notifyPaymentSuccess(Order order, PaymentTransaction payment) {
+        saveOrderNotification(
+                order.getBuyerId(),
+                "PAYMENT_SUCCESS",
+                "Payment Successful",
+                "Payment successful for " + buildOrderLabel(order),
+                order,
+                order.getBuyer(),
+                payment
+        );
+
+        saveOrderNotification(
+                order.getFarmerId(),
+                "ORDER_PAID",
+                "Order Paid",
+                buildPartyName(order.getBuyer()) + " completed payment for " + buildOrderLabel(order),
+                order,
+                order.getBuyer(),
+                payment
+        );
+    }
+
+    public void notifyPaymentFailed(Order order, PaymentTransaction payment) {
+        saveOrderNotification(
+                order.getBuyerId(),
+                "PAYMENT_FAILED",
+                "Payment Failed",
+                "Payment failed for " + buildOrderLabel(order),
+                order,
+                order.getBuyer(),
+                payment
+        );
+    }
+
+    public void notifyOrderConfirmed(Order order) {
+        saveOrderNotification(
+                order.getBuyerId(),
+                "ORDER_CONFIRMED",
+                "Order Confirmed",
+                buildPartyName(order.getFarmer()) + " confirmed " + buildOrderLabel(order),
+                order,
+                order.getFarmer(),
+                null
+        );
+    }
+
+    public void notifyOrderProcessing(Order order) {
+        saveOrderNotification(
+                order.getBuyerId(),
+                "ORDER_PROCESSING",
+                "Order Processing",
+                buildPartyName(order.getFarmer()) + " started processing " + buildOrderLabel(order),
+                order,
+                order.getFarmer(),
+                null
+        );
+    }
+
+    public void notifyOrderDispatched(Order order) {
+        saveOrderNotification(
+                order.getBuyerId(),
+                "ORDER_DISPATCHED",
+                "Order Dispatched",
+                buildPartyName(order.getFarmer()) + " dispatched " + buildOrderLabel(order),
+                order,
+                order.getFarmer(),
+                null
+        );
+    }
+
+    public void notifyOrderDelivered(Order order) {
+        saveOrderNotification(
+                order.getBuyerId(),
+                "ORDER_DELIVERED",
+                "Order Delivered",
+                buildPartyName(order.getFarmer()) + " marked " + buildOrderLabel(order) + " as delivered",
+                order,
+                order.getFarmer(),
+                null
+        );
+    }
+
+    public void notifyOrderCompleted(Order order) {
+        saveOrderNotification(
+                order.getFarmerId(),
+                "ORDER_COMPLETED",
+                "Order Completed",
+                buildPartyName(order.getBuyer()) + " completed " + buildOrderLabel(order),
+                order,
+                order.getBuyer(),
+                null
+        );
+    }
+
+    public void notifyOrderCancelled(Order order) {
+        Order.OrderEvent latestEvent = getLatestOrderEvent(order);
+        String actorUserId = latestEvent != null ? latestEvent.getActionByUserId() : null;
+        String targetUserId = actorUserId != null && actorUserId.equals(order.getBuyerId()) ? order.getFarmerId() : order.getBuyerId();
+        Order.PartySnapshot actor = actorUserId != null && actorUserId.equals(order.getBuyerId()) ? order.getBuyer() : order.getFarmer();
+
+        saveOrderNotification(
+                targetUserId,
+                "ORDER_CANCELLED",
+                "Order Cancelled",
+                buildPartyName(actor) + " cancelled " + buildOrderLabel(order),
+                order,
+                actor,
+                null
+        );
+    }
+
     /* =====================================================
        Helper
        ===================================================== */
@@ -206,6 +331,42 @@ public class NotificationService {
                 .referenceId(primaryContext != null ? primaryContext.getRefId() : null)
                 .actorUserId(actor != null ? actor.getUserId() : null)
                 .actorUserRole(actor != null && actor.getUserType() != null ? actor.getUserType().name() : null)
+                .actorName(actor != null ? actor.getDisplayName() : null)
+                .isRead(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        notificationRepository.save(notification);
+    }
+
+    private void saveOrderNotification(
+            String userId,
+            String type,
+            String title,
+            String message,
+            Order order,
+            Order.PartySnapshot actor,
+            PaymentTransaction paymentTransaction
+    ) {
+        if (userId == null || userId.isBlank() || order == null) {
+            return;
+        }
+
+        Notification notification = Notification.builder()
+                .userId(userId)
+                .type(type)
+                .title(title)
+                .message(message)
+                .cropId(order.getItem() != null ? order.getItem().getCropId() : null)
+                .connectionId(order.getConnectionId())
+                .chatId(order.getChatId())
+                .orderId(order.getId())
+                .orderCode(order.getOrderCode())
+                .paymentTransactionId(paymentTransaction != null ? paymentTransaction.getId() : null)
+                .referenceType(order.getContextType() != null ? order.getContextType().name() : null)
+                .referenceId(order.getContextRefId())
+                .actorUserId(actor != null ? actor.getUserId() : null)
+                .actorUserRole(actor != null ? actor.getUserType() : null)
                 .actorName(actor != null ? actor.getDisplayName() : null)
                 .isRead(false)
                 .createdAt(LocalDateTime.now())
@@ -276,5 +437,42 @@ public class NotificationService {
         }
 
         return primaryContext.getType() == Connection.ContextType.DEMAND ? "your demand" : "your crop";
+    }
+
+    private String buildPartyName(Order.PartySnapshot actor) {
+        if (actor == null || actor.getDisplayName() == null || actor.getDisplayName().isBlank()) {
+            return "Someone";
+        }
+        return actor.getDisplayName();
+    }
+
+    private String buildOrderLabel(Order order) {
+        if (order == null) {
+            return "your order";
+        }
+
+        String title = order.getItem() != null ? order.getItem().getTitle() : null;
+        String orderCode = order.getOrderCode();
+
+        if (title != null && !title.isBlank() && orderCode != null && !orderCode.isBlank()) {
+            return title + " (" + orderCode + ")";
+        }
+
+        if (title != null && !title.isBlank()) {
+            return title;
+        }
+
+        if (orderCode != null && !orderCode.isBlank()) {
+            return "order " + orderCode;
+        }
+
+        return "your order";
+    }
+
+    private Order.OrderEvent getLatestOrderEvent(Order order) {
+        if (order == null || order.getEvents() == null || order.getEvents().isEmpty()) {
+            return null;
+        }
+        return order.getEvents().get(order.getEvents().size() - 1);
     }
 }

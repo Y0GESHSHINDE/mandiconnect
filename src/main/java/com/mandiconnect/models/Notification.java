@@ -28,6 +28,10 @@ public class Notification {
     private String cropId;
     private String marketId;
     private String connectionId;
+    private String chatId;
+    private String orderId;
+    private String orderCode;
+    private String paymentTransactionId;
     private String referenceType;
     private String referenceId;
     private String actorUserId;
