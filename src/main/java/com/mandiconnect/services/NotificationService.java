@@ -6,9 +6,12 @@ import com.mandiconnect.models.Notification;
 import com.mandiconnect.models.Connection;
 import com.mandiconnect.models.Order;
 import com.mandiconnect.models.PaymentTransaction;
+import com.mandiconnect.models.ChatMessage;
+import com.mandiconnect.models.ChatRoom;
 import com.mandiconnect.repositories.FarmerRepository;
 import com.mandiconnect.repositories.NotificationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -16,10 +19,12 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final FarmerRepository farmerRepository;
+    private final NotificationPushService notificationPushService;
 
     /* =====================================================
        1️⃣ PRICE POSTED (Broadcast)
@@ -58,7 +63,7 @@ public class NotificationService {
                     .createdAt(LocalDateTime.now())
                     .build();
 
-            notificationRepository.save(notification);
+            saveNotification(notification);
         }
     }
 
@@ -88,7 +93,7 @@ public class NotificationService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        notificationRepository.save(notification);
+        saveNotification(notification);
     }
 
     /* =====================================================
@@ -117,7 +122,7 @@ public class NotificationService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        notificationRepository.save(notification);
+        saveNotification(notification);
     }
 
     public void notifyConnectionRequestReceived(Connection connection) {
@@ -297,6 +302,49 @@ public class NotificationService {
         );
     }
 
+    public void notifyChatMessageReceived(
+            ChatRoom room,
+            ChatMessage message,
+            ChatRoom.ParticipantSnapshot actor,
+            ChatRoom.ParticipantSnapshot receiver
+    ) {
+        if (room == null || message == null || actor == null || receiver == null) {
+            return;
+        }
+
+        String receiverUserId = receiver.getUserId();
+        if (receiverUserId == null || receiverUserId.isBlank()) {
+            return;
+        }
+
+        String actorUserId = actor.getUserId();
+        if (actorUserId != null && actorUserId.equals(receiverUserId)) {
+            return;
+        }
+
+        String messageType = message.getType() != null ? message.getType().trim().toUpperCase() : ChatMessage.MessageType.TEXT.name();
+        String title = "New message from " + buildChatParticipantName(actor);
+        String body = buildChatMessagePreview(messageType, message.getText());
+
+        Notification notification = Notification.builder()
+                .userId(receiverUserId)
+                .type("CHAT_MESSAGE_RECEIVED")
+                .title(title)
+                .message(body)
+                .connectionId(room.getConnectionId())
+                .chatId(room.getId())
+                .referenceType(message.getReferenceType())
+                .referenceId(message.getReferenceId())
+                .actorUserId(actor.getUserId())
+                .actorUserRole(actor.getUserType())
+                .actorName(actor.getDisplayName())
+                .isRead(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        saveNotification(notification);
+    }
+
     /* =====================================================
        Helper
        ===================================================== */
@@ -336,7 +384,7 @@ public class NotificationService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        notificationRepository.save(notification);
+        saveNotification(notification);
     }
 
     private void saveOrderNotification(
@@ -372,7 +420,7 @@ public class NotificationService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        notificationRepository.save(notification);
+        saveNotification(notification);
     }
 
     private Connection.ParticipantSnapshot findRequester(Connection connection) {
@@ -446,6 +494,28 @@ public class NotificationService {
         return actor.getDisplayName();
     }
 
+    private String buildChatParticipantName(ChatRoom.ParticipantSnapshot actor) {
+        if (actor == null || actor.getDisplayName() == null || actor.getDisplayName().isBlank()) {
+            return "Someone";
+        }
+        return actor.getDisplayName();
+    }
+
+    private String buildChatMessagePreview(String messageType, String text) {
+        String safeType = messageType == null ? ChatMessage.MessageType.TEXT.name() : messageType;
+        String safeText = text == null ? null : text.trim();
+
+        if (ChatMessage.MessageType.IMAGE.name().equalsIgnoreCase(safeType)) {
+            return safeText == null || safeText.isBlank() ? "Sent an image" : "Sent an image: " + safeText;
+        }
+
+        if (safeText == null || safeText.isBlank()) {
+            return "Sent you a message";
+        }
+
+        return safeText;
+    }
+
     private String buildOrderLabel(Order order) {
         if (order == null) {
             return "your order";
@@ -475,4 +545,14 @@ public class NotificationService {
         }
         return order.getEvents().get(order.getEvents().size() - 1);
     }
+
+    private void saveNotification(Notification notification) {
+        Notification saved = notificationRepository.save(notification);
+        try {
+            notificationPushService.sendNotification(saved);
+        } catch (Exception ex) {
+            log.warn("Failed to deliver push notification for notification {}", saved.getId(), ex);
+        }
+    }
 }
+

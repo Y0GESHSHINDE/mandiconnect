@@ -16,6 +16,7 @@ import com.mandiconnect.repositories.ConnectionRepository;
 import com.mandiconnect.repositories.CropListingRepository;
 import com.mandiconnect.repositories.CropRepository;
 import com.mandiconnect.repositories.FarmerRepository;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,6 +38,7 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ChatService {
 
     private static final int DEFAULT_HISTORY_SIZE = 50;
@@ -52,6 +54,7 @@ public class ChatService {
     private final CropRepository cropRepository;
     private final FileUploadService fileUploadService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
 
     public ChatRoom openChat(String connectionId, String authenticatedEmail) {
         Connection connection = findAuthorizedConnection(connectionId, authenticatedEmail);
@@ -140,6 +143,7 @@ public class ChatService {
         applyUnreadIncrement(room, actor);
         room.setUpdatedAt(message.getCreatedAt());
         ChatRoom savedRoom = chatRoomRepository.save(room);
+        createChatMessageNotification(savedRoom, message, actor);
 
         return new ChatDelivery(savedRoom, message);
     }
@@ -190,6 +194,7 @@ public class ChatService {
         applyUnreadIncrement(room, actor);
         room.setUpdatedAt(message.getCreatedAt());
         ChatRoom savedRoom = chatRoomRepository.save(room);
+        createChatMessageNotification(savedRoom, message, actor);
 
         return new ChatDelivery(savedRoom, message);
     }
@@ -814,6 +819,47 @@ public class ChatService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " cannot be blank");
         }
         return value.trim();
+    }
+
+    private void createChatMessageNotification(ChatRoom room, ChatMessage message, AuthenticatedUser actor) {
+        if (room == null || message == null || actor == null) {
+            return;
+        }
+
+        ChatRoom.ParticipantSnapshot actorParticipant = findChatParticipant(room, actor.userId());
+        ChatRoom.ParticipantSnapshot receiver = findOtherChatParticipant(room, actor.userId());
+
+        if (actorParticipant == null || receiver == null) {
+            return;
+        }
+
+        try {
+            notificationService.notifyChatMessageReceived(room, message, actorParticipant, receiver);
+        } catch (Exception ex) {
+            log.warn("Failed to create chat notification for chat {} and message {}", room.getId(), message.getId(), ex);
+        }
+    }
+
+    private ChatRoom.ParticipantSnapshot findChatParticipant(ChatRoom room, String userId) {
+        if (room == null || room.getParticipants() == null || userId == null || userId.isBlank()) {
+            return null;
+        }
+
+        return room.getParticipants().stream()
+                .filter(participant -> participant != null && Objects.equals(participant.getUserId(), userId))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private ChatRoom.ParticipantSnapshot findOtherChatParticipant(ChatRoom room, String actorUserId) {
+        if (room == null || room.getParticipants() == null || actorUserId == null || actorUserId.isBlank()) {
+            return null;
+        }
+
+        return room.getParticipants().stream()
+                .filter(participant -> participant != null && !Objects.equals(participant.getUserId(), actorUserId))
+                .findFirst()
+                .orElse(null);
     }
 
     private String normalizeOptionalValue(String value) {
