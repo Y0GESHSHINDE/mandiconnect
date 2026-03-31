@@ -260,7 +260,7 @@ public class PaymentService {
                     h1 { margin: 0 0 10px; font-size: 24px; }
                     p { margin: 0 0 10px; color: #4b5563; line-height: 1.5; }
                     .amount { margin: 20px 0; font-size: 28px; font-weight: 800; color: #166534; }
-                    .btn { width: 100%; border: 0; border-radius: 14px; padding: 14px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
+                    .btn { width: 100%%; border: 0; border-radius: 14px; padding: 14px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
                     .btn-primary { background: #16a34a; color: #fff; }
                     .btn-secondary { margin-top: 10px; background: #f3f4f6; color: #111827; }
                     .note { margin-top: 16px; font-size: 12px; color: #6b7280; }
