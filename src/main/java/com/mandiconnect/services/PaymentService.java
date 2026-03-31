@@ -57,6 +57,9 @@ public class PaymentService {
     @Value("${razorpay.currency:INR}")
     private String razorpayDefaultCurrency;
 
+    @Value("${app.base-url}")
+    private String appBaseUrl;
+
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -684,11 +687,16 @@ public class PaymentService {
     }
 
     private String buildCheckoutUrl(String paymentId, String returnUrl) {
-        return normalizeApiBaseUrl()
+        return normalizeAppBaseUrl()
                 + "/payments/checkout/"
                 + requireValue(paymentId, "paymentId")
                 + "?returnUrl="
                 + urlEncode(returnUrl);
+    }
+
+    private String normalizeAppBaseUrl() {
+        String safeBaseUrl = requireValue(appBaseUrl, "app.base-url");
+        return safeBaseUrl.endsWith("/") ? safeBaseUrl.substring(0, safeBaseUrl.length() - 1) : safeBaseUrl;
     }
 
     private String appendQueryParams(String baseUrl, String... keyValuePairs) {
