@@ -5,6 +5,7 @@ import com.mandiconnect.services.PaymentService;
 import com.mandiconnect.utils.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,7 +24,15 @@ public class PaymentController {
             @RequestBody CreatePaymentOrderRequest body
     ) {
         String email = extractAuthenticatedEmail(authHeader);
-        return ResponseEntity.ok(paymentService.createPaymentOrder(email, body.orderId()));
+        return ResponseEntity.ok(paymentService.createPaymentOrder(email, body.orderId(), body.returnUrl()));
+    }
+
+    @GetMapping(value = "/checkout/{paymentId}", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> renderCheckoutPage(
+            @PathVariable String paymentId,
+            @RequestParam("returnUrl") String returnUrl
+    ) {
+        return ResponseEntity.ok(paymentService.renderHostedCheckoutPage(paymentId, returnUrl));
     }
 
     @PostMapping("/verify")
@@ -66,7 +75,7 @@ public class PaymentController {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record CreatePaymentOrderRequest(String orderId) {
+    public record CreatePaymentOrderRequest(String orderId, String returnUrl) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

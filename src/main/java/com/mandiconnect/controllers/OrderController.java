@@ -33,7 +33,6 @@ public class OrderController {
                         body.cropListingId(),
                         body.quantity(),
                         body.unit(),
-                        body.agreedPrice(),
                         body.currency(),
                         body.notes(),
                         body.deliveryDetails() == null
@@ -182,7 +181,6 @@ public class OrderController {
             String cropListingId,
             Double quantity,
             String unit,
-            Double agreedPrice,
             String currency,
             String notes,
             DeliveryDetailsRequest deliveryDetails

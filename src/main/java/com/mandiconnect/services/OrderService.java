@@ -80,7 +80,13 @@ public class OrderService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Order unit must match the crop listing unit");
         }
 
-        double agreedPrice = requirePositive(command.agreedPrice(), "agreedPrice");
+        Double listingPrice = cropListing.getPrice();
+        if (listingPrice == null || listingPrice <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Crop listing price must be greater than 0");
+        }
+
+        double unitPrice = listingPrice;
+        double subtotalAmount = unitPrice * orderedQuantity;
         String currency = normalizeOptionalValue(command.currency());
         if (currency == null) {
             currency = "INR";
@@ -121,15 +127,15 @@ public class OrderService {
                         .locationState(cropListing.getLocation() != null ? normalizeOptionalValue(cropListing.getLocation().getState()) : null)
                         .listedQuantity(cropListing.getQuantity())
                         .listedUnit(listedUnit)
-                        .listedPrice(cropListing.getPrice())
+                        .listedPrice(unitPrice)
                         .orderedQuantity(orderedQuantity)
                         .orderedUnit(orderedUnit)
-                        .agreedPrice(agreedPrice)
+                        .agreedPrice(unitPrice)
                         .build())
                 .deliveryDetails(deliveryDetails)
                 .notes(normalizeOptionalValue(command.notes()))
-                .subtotalAmount(agreedPrice)
-                .totalAmount(agreedPrice)
+                .subtotalAmount(subtotalAmount)
+                .totalAmount(subtotalAmount)
                 .currency(currency)
                 .status(Order.OrderStatus.PLACED.name())
                 .paymentStatus(Order.PaymentStatus.PENDING.name())
@@ -833,7 +839,6 @@ public class OrderService {
             String cropListingId,
             Double quantity,
             String unit,
-            Double agreedPrice,
             String currency,
             String notes,
             DeliveryDetailsInput deliveryDetails

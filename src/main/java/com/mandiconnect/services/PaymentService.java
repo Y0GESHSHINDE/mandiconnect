@@ -21,6 +21,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -59,8 +60,9 @@ public class PaymentService {
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public PaymentOrderResponse createPaymentOrder(String authenticatedEmail, String orderId) {
+    public PaymentOrderResponse createPaymentOrder(String authenticatedEmail, String orderId, String returnUrl) {
         ensureRazorpayConfigured();
+        String safeReturnUrl = requireValue(returnUrl, "returnUrl");
 
         Order order = getOrderForUpdate(orderId);
         AuthenticatedUser actor = resolveOrderBuyer(order, authenticatedEmail);
@@ -69,7 +71,7 @@ public class PaymentService {
 
         PaymentTransaction reusable = findReusableInitiatedPayment(order);
         if (reusable != null) {
-            return buildPaymentOrderResponse(order, reusable);
+            return buildPaymentOrderResponse(order, reusable, safeReturnUrl);
         }
 
         long amountInSubunits = toSubunits(order.getTotalAmount(), order.getCurrency());
@@ -105,7 +107,7 @@ public class PaymentService {
         Order savedOrder = orderRepository.save(order);
         emitPaymentInitiatedSideEffects(savedOrder, actor);
 
-        return buildPaymentOrderResponse(savedOrder, savedPayment);
+        return buildPaymentOrderResponse(savedOrder, savedPayment, safeReturnUrl);
     }
 
     public PaymentVerificationResponse verifyPayment(String authenticatedEmail, VerifyPaymentCommand command) {
@@ -190,7 +192,7 @@ public class PaymentService {
         return new OrderPaymentsResponse(order, latestPayment, payments);
     }
 
-    private PaymentOrderResponse buildPaymentOrderResponse(Order order, PaymentTransaction payment) {
+    private PaymentOrderResponse buildPaymentOrderResponse(Order order, PaymentTransaction payment, String returnUrl) {
         return new PaymentOrderResponse(
                 order,
                 payment,
@@ -200,8 +202,164 @@ public class PaymentService {
                         payment.getAmountInSubunits(),
                         payment.getCurrency(),
                         payment.getReceipt(),
-                        order.getOrderCode()
+                        order.getOrderCode(),
+                        buildCheckoutUrl(payment.getId(), returnUrl)
                 )
+        );
+    }
+
+    public String renderHostedCheckoutPage(String paymentId, String returnUrl) {
+        ensureRazorpayConfigured();
+
+        PaymentTransaction payment = paymentTransactionRepository.findById(requireValue(paymentId, "paymentId"))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment transaction not found"));
+        Order order = getOrderForUpdate(payment.getOrderId());
+
+        if (!PaymentTransaction.TransactionStatus.INITIATED.name().equals(payment.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This payment is no longer available for checkout");
+        }
+
+        String safeReturnUrl = requireValue(returnUrl, "returnUrl");
+        String successUrl = appendQueryParams(
+                safeReturnUrl,
+                "status", "success",
+                "orderId", order.getId(),
+                "razorpayOrderId", payment.getGatewayOrderId()
+        );
+        String cancelUrl = appendQueryParams(
+                safeReturnUrl,
+                "status", "cancelled",
+                "orderId", order.getId(),
+                "razorpayOrderId", payment.getGatewayOrderId()
+        );
+        String failedUrl = appendQueryParams(
+                safeReturnUrl,
+                "status", "failed",
+                "orderId", order.getId(),
+                "razorpayOrderId", payment.getGatewayOrderId()
+        );
+
+        String buyerName = order.getBuyer() != null ? nullSafe(order.getBuyer().getDisplayName()) : "";
+        String buyerContact = order.getBuyer() != null ? sanitizePhone(order.getBuyer().getMobile()) : "";
+        String description = order.getItem() != null ? firstNonBlank(order.getItem().getTitle(), "Crop Order") : "Crop Order";
+
+        return """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="UTF-8" />
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                  <title>MandiConnect Payment</title>
+                  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+                  <style>
+                    body { font-family: Arial, sans-serif; background: #f3f9f4; color: #111827; margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+                    .card { width: min(92vw, 420px); background: #fff; border-radius: 20px; padding: 28px; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14); text-align: center; }
+                    h1 { margin: 0 0 10px; font-size: 24px; }
+                    p { margin: 0 0 10px; color: #4b5563; line-height: 1.5; }
+                    .amount { margin: 20px 0; font-size: 28px; font-weight: 800; color: #166534; }
+                    .btn { width: 100%; border: 0; border-radius: 14px; padding: 14px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
+                    .btn-primary { background: #16a34a; color: #fff; }
+                    .btn-secondary { margin-top: 10px; background: #f3f4f6; color: #111827; }
+                    .note { margin-top: 16px; font-size: 12px; color: #6b7280; }
+                  </style>
+                </head>
+                <body>
+                  <div class="card">
+                    <h1>Complete Payment</h1>
+                    <p>Order %s</p>
+                    <p>%s</p>
+                    <div class="amount">%s %s</div>
+                    <button id="pay-btn" class="btn btn-primary">Pay Now</button>
+                    <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+                    <p class="note">You will return to the app automatically after payment.</p>
+                  </div>
+
+                  <script>
+                    const redirect = (url, extraParams = {}) => {
+                      const target = new URL(url);
+                      Object.entries(extraParams).forEach(([key, value]) => {
+                        if (value) target.searchParams.set(key, value);
+                      });
+                      window.location.replace(target.toString());
+                    };
+
+                    const options = {
+                      key: %s,
+                      amount: %s,
+                      currency: %s,
+                      name: "MandiConnect",
+                      description: %s,
+                      order_id: %s,
+                      prefill: {
+                        name: %s,
+                        contact: %s
+                      },
+                      notes: {
+                        orderCode: %s,
+                        appOrderId: %s,
+                        connectionId: %s,
+                        chatId: %s
+                      },
+                      theme: {
+                        color: "#16a34a"
+                      },
+                      modal: {
+                        ondismiss: function () {
+                          redirect(%s);
+                        }
+                      },
+                      handler: function (response) {
+                        redirect(%s, {
+                          razorpayPaymentId: response.razorpay_payment_id,
+                          razorpaySignature: response.razorpay_signature,
+                          razorpayOrderId: response.razorpay_order_id
+                        });
+                      }
+                    };
+
+                    const checkout = new Razorpay(options);
+
+                    checkout.on("payment.failed", function (response) {
+                      redirect(%s, {
+                        failureCode: response.error && response.error.code,
+                        failureDescription: response.error && response.error.description
+                      });
+                    });
+
+                    document.getElementById("pay-btn").addEventListener("click", function () {
+                      checkout.open();
+                    });
+
+                    document.getElementById("cancel-btn").addEventListener("click", function () {
+                      redirect(%s);
+                    });
+
+                    window.onload = function () {
+                      checkout.open();
+                    };
+                  </script>
+                </body>
+                </html>
+                """.formatted(
+                escapeHtml(order.getOrderCode()),
+                escapeHtml(description),
+                escapeHtml(payment.getCurrency()),
+                escapeHtml(trimDecimal(fromSubunits(payment.getAmountInSubunits()))),
+                jsString(razorpayKeyId),
+                payment.getAmountInSubunits(),
+                jsString(payment.getCurrency()),
+                jsString(description),
+                jsString(payment.getGatewayOrderId()),
+                jsString(buyerName),
+                jsString(buyerContact),
+                jsString(order.getOrderCode()),
+                jsString(order.getId()),
+                jsString(order.getConnectionId()),
+                jsString(order.getChatId()),
+                jsString(cancelUrl),
+                jsString(successUrl),
+                jsString(failedUrl),
+                jsString(cancelUrl)
         );
     }
 
@@ -525,6 +683,91 @@ public class PaymentService {
         return safeValue == null ? "" : safeValue;
     }
 
+    private String buildCheckoutUrl(String paymentId, String returnUrl) {
+        return normalizeApiBaseUrl()
+                + "/payments/checkout/"
+                + requireValue(paymentId, "paymentId")
+                + "?returnUrl="
+                + urlEncode(returnUrl);
+    }
+
+    private String appendQueryParams(String baseUrl, String... keyValuePairs) {
+        StringBuilder builder = new StringBuilder(requireValue(baseUrl, "baseUrl"));
+        builder.append(baseUrl.contains("?") ? "&" : "?");
+
+        for (int index = 0; index < keyValuePairs.length; index += 2) {
+            if (index > 0) {
+                builder.append("&");
+            }
+            builder.append(urlEncode(keyValuePairs[index]))
+                    .append("=")
+                    .append(urlEncode(keyValuePairs[index + 1]));
+        }
+
+        return builder.toString();
+    }
+
+    private String urlEncode(String value) {
+        return URLEncoder.encode(requireValue(value, "value"), StandardCharsets.UTF_8);
+    }
+
+    private String jsString(String value) {
+        String safeValue = value == null ? "" : value;
+        return "\"" + safeValue
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "") + "\"";
+    }
+
+    private String escapeHtml(String value) {
+        String safeValue = value == null ? "" : value;
+        return safeValue
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
+    private String sanitizePhone(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        String digits = value.replaceAll("[^\\d+]", "");
+        if (digits.startsWith("+")) {
+            return digits;
+        }
+        if (digits.length() == 10) {
+            return "+91" + digits;
+        }
+        return digits;
+    }
+
+    private Double fromSubunits(Long amountInSubunits) {
+        if (amountInSubunits == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(amountInSubunits)
+                .movePointLeft(2)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
+    }
+
+    private String trimDecimal(Double value) {
+        if (value == null) {
+            return null;
+        }
+
+        BigDecimal decimal = BigDecimal.valueOf(value).stripTrailingZeros();
+        String text = decimal.toPlainString();
+        if (text.endsWith(".0")) {
+            return text.substring(0, text.length() - 2);
+        }
+        return text;
+    }
+
     private String bytesToHex(byte[] bytes) {
         StringBuilder builder = new StringBuilder(bytes.length * 2);
         for (byte value : bytes) {
@@ -617,7 +860,8 @@ public class PaymentService {
             Long amount,
             String currency,
             String receipt,
-            String orderCode
+            String orderCode,
+            String checkoutUrl
     ) {
     }
 
