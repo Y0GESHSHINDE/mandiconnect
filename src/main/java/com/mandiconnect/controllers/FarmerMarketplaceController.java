@@ -67,6 +67,34 @@ public class FarmerMarketplaceController {
         return ResponseEntity.ok(result);
     }
 
+    @DeleteMapping("/cropListing/{id}")
+    public ResponseEntity<?> deleteCropListing(
+            @PathVariable("id") String listingId,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
+
+        Optional<CropListing> existingListing = cropListingRepository.findById(listingId);
+        if (existingListing.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Crop listing not found");
+        }
+
+        CropListing cropListing = existingListing.get();
+        String authenticatedEmail = jwtUtil.getEmailFromToken(token);
+        String listingOwnerEmail =
+                cropListing.getFarmer() != null ? cropListing.getFarmer().getEmail() : null;
+
+        if (listingOwnerEmail == null || !listingOwnerEmail.equalsIgnoreCase(authenticatedEmail)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You can delete only your own crop listings");
+        }
+
+        cropListingRepository.deleteById(listingId);
+        return ResponseEntity.ok("Crop listing deleted successfully");
+    }
+
 
     @PostMapping("/cropListing")
     public ResponseEntity<?> createCropListing(
