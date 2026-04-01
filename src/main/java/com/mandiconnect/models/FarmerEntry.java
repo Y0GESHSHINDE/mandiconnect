@@ -9,6 +9,7 @@ import org.springframework.data.mongodb.core.mapping.DBRef;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -47,6 +48,10 @@ public class FarmerEntry {
     public static class Feedback {
         private int agreeCount = 0;
         private int disagreeCount = 0;
-        private List<String> votedFarmers; // farmer IDs who voted
+        @Builder.Default
+        private List<String> likedFarmerIds = new ArrayList<>();
+        @Builder.Default
+        private List<String> dislikedFarmerIds = new ArrayList<>();
+        private List<String> votedFarmers; // legacy field retained for backward compatibility
     }
 }

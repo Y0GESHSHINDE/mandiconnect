@@ -11,7 +11,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/farmer-entries")
@@ -92,23 +94,32 @@ public class FarmerEntryController {
             FarmerEntry entry = farmerEntryRepository.findById(entryId)
                     .orElseThrow(() -> new RuntimeException("Price entry not found"));
 
-            if (entry.getFeedback().getVotedFarmers() == null) {
-                entry.getFeedback().setVotedFarmers(new ArrayList<>());
+            if (entry.getFarmer() != null && farmerId.equals(entry.getFarmer().getId())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("You cannot react to your own price");
             }
 
-            if (entry.getFeedback().getVotedFarmers().contains(farmerId)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("You have already voted");
-            }
+            normalizeFeedback(entry);
 
-            entry.getFeedback().setAgreeCount(
-                    entry.getFeedback().getAgreeCount() + 1
-            );
-            entry.getFeedback().getVotedFarmers().add(farmerId);
+            boolean addedAgree = false;
+
+            if (entry.getFeedback().getLikedFarmerIds().contains(farmerId)) {
+                entry.getFeedback().getLikedFarmerIds().remove(farmerId);
+                entry.getFeedback().setAgreeCount(Math.max(0, entry.getFeedback().getAgreeCount() - 1));
+            } else {
+                if (entry.getFeedback().getDislikedFarmerIds().remove(farmerId)) {
+                    entry.getFeedback().setDisagreeCount(Math.max(0, entry.getFeedback().getDisagreeCount() - 1));
+                }
+
+                entry.getFeedback().getLikedFarmerIds().add(farmerId);
+                entry.getFeedback().setAgreeCount(entry.getFeedback().getAgreeCount() + 1);
+                addedAgree = true;
+            }
 
             farmerEntryRepository.save(entry);
-            notificationService.notifyPriceAgree(entry, farmerId);
-            return ResponseEntity.ok("Price agreed successfully");
+            if (addedAgree) {
+                notificationService.notifyPriceAgree(entry, farmerId);
+            }
+            return ResponseEntity.ok(buildReactionSummary(entry, farmerId));
         }
 
         /* =====================================================
@@ -128,24 +139,33 @@ public class FarmerEntryController {
             FarmerEntry entry = farmerEntryRepository.findById(entryId)
                     .orElseThrow(() -> new RuntimeException("Price entry not found"));
 
-            if (entry.getFeedback().getVotedFarmers() == null) {
-                entry.getFeedback().setVotedFarmers(new ArrayList<>());
+            if (entry.getFarmer() != null && farmerId.equals(entry.getFarmer().getId())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("You cannot react to your own price");
             }
 
-            if (entry.getFeedback().getVotedFarmers().contains(farmerId)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("You have already voted");
-            }
+            normalizeFeedback(entry);
 
-            entry.getFeedback().setDisagreeCount(
-                    entry.getFeedback().getDisagreeCount() + 1
-            );
-            entry.getFeedback().getVotedFarmers().add(farmerId);
+            boolean addedDisagree = false;
+
+            if (entry.getFeedback().getDislikedFarmerIds().contains(farmerId)) {
+                entry.getFeedback().getDislikedFarmerIds().remove(farmerId);
+                entry.getFeedback().setDisagreeCount(Math.max(0, entry.getFeedback().getDisagreeCount() - 1));
+            } else {
+                if (entry.getFeedback().getLikedFarmerIds().remove(farmerId)) {
+                    entry.getFeedback().setAgreeCount(Math.max(0, entry.getFeedback().getAgreeCount() - 1));
+                }
+
+                entry.getFeedback().getDislikedFarmerIds().add(farmerId);
+                entry.getFeedback().setDisagreeCount(entry.getFeedback().getDisagreeCount() + 1);
+                addedDisagree = true;
+            }
 
             farmerEntryRepository.save(entry);
-            notificationService.notifyPriceDisAgree(entry, farmerId);
+            if (addedDisagree) {
+                notificationService.notifyPriceDisAgree(entry, farmerId);
+            }
 
-            return ResponseEntity.ok("Price disagreed successfully");
+            return ResponseEntity.ok(buildReactionSummary(entry, farmerId));
         }
 
         /* =====================================================
@@ -164,6 +184,7 @@ public class FarmerEntryController {
             FarmerEntry entry = farmerEntryRepository.findById(entryId)
                     .orElseThrow(() -> new RuntimeException("Price entry not found"));
 
+            normalizeFeedback(entry);
             return ResponseEntity.ok(entry.getFeedback().getAgreeCount());
         }
 
@@ -183,7 +204,54 @@ public class FarmerEntryController {
             FarmerEntry entry = farmerEntryRepository.findById(entryId)
                     .orElseThrow(() -> new RuntimeException("Price entry not found"));
 
+            normalizeFeedback(entry);
             return ResponseEntity.ok(entry.getFeedback().getDisagreeCount());
+        }
+
+        private void normalizeFeedback(FarmerEntry entry) {
+            if (entry.getFeedback() == null) {
+                entry.setFeedback(new FarmerEntry.Feedback());
+            }
+
+            if (entry.getFeedback().getLikedFarmerIds() == null) {
+                entry.getFeedback().setLikedFarmerIds(new ArrayList<>());
+            }
+
+            if (entry.getFeedback().getDislikedFarmerIds() == null) {
+                entry.getFeedback().setDislikedFarmerIds(new ArrayList<>());
+            }
+
+            if (entry.getFeedback().getAgreeCount() < 0) {
+                entry.getFeedback().setAgreeCount(0);
+            }
+
+            if (entry.getFeedback().getDisagreeCount() < 0) {
+                entry.getFeedback().setDisagreeCount(0);
+            }
+        }
+
+        private Map<String, Object> buildReactionSummary(FarmerEntry entry, String farmerId) {
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("agreeCount", entry.getFeedback().getAgreeCount());
+            summary.put("disagreeCount", entry.getFeedback().getDisagreeCount());
+            summary.put("userReaction", resolveUserReaction(entry, farmerId));
+            return summary;
+        }
+
+        private String resolveUserReaction(FarmerEntry entry, String farmerId) {
+            if (farmerId == null || farmerId.isBlank() || entry.getFeedback() == null) {
+                return "NONE";
+            }
+
+            if (entry.getFeedback().getLikedFarmerIds() != null && entry.getFeedback().getLikedFarmerIds().contains(farmerId)) {
+                return "AGREE";
+            }
+
+            if (entry.getFeedback().getDislikedFarmerIds() != null && entry.getFeedback().getDislikedFarmerIds().contains(farmerId)) {
+                return "DISAGREE";
+            }
+
+            return "NONE";
         }
 
 
