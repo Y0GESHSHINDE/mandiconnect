@@ -833,6 +833,10 @@ public class ChatService {
             return;
         }
 
+        if (getUnreadCountForParticipant(room, receiver) <= 5) {
+            return;
+        }
+
         try {
             notificationService.notifyChatMessageReceived(room, message, actorParticipant, receiver);
         } catch (Exception ex) {
@@ -897,6 +901,22 @@ public class ChatService {
 
     private int safeUnread(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private int getUnreadCountForParticipant(ChatRoom room, ChatRoom.ParticipantSnapshot participant) {
+        if (room == null || participant == null || participant.getUserType() == null) {
+            return 0;
+        }
+
+        if (Connection.UserType.BUYER.name().equalsIgnoreCase(participant.getUserType())) {
+            return safeUnread(room.getUnreadCountBuyer());
+        }
+
+        if (Connection.UserType.FARMER.name().equalsIgnoreCase(participant.getUserType())) {
+            return safeUnread(room.getUnreadCountFarmer());
+        }
+
+        return 0;
     }
 
     private void applySystemUnreadIncrement(ChatRoom room, String actedByUserId) {

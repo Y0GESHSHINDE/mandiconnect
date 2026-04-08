@@ -95,6 +95,43 @@ public class FarmerMarketplaceController {
         return ResponseEntity.ok("Crop listing deleted successfully");
     }
 
+    @PatchMapping("/cropListing/{id}/status")
+    public ResponseEntity<?> updateCropListingStatus(
+            @PathVariable("id") String listingId,
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody Map<String, String> payload
+    ) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
+
+        Optional<CropListing> existingListing = cropListingRepository.findById(listingId);
+        if (existingListing.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Crop listing not found");
+        }
+
+        CropListing cropListing = existingListing.get();
+        String authenticatedEmail = jwtUtil.getEmailFromToken(token);
+        String listingOwnerEmail =
+                cropListing.getFarmer() != null ? cropListing.getFarmer().getEmail() : null;
+
+        if (listingOwnerEmail == null || !listingOwnerEmail.equalsIgnoreCase(authenticatedEmail)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You can update only your own crop listings");
+        }
+
+        String nextStatus = String.valueOf(payload.getOrDefault("status", "")).trim().toLowerCase();
+        if (!"active".equals(nextStatus) && !"deactive".equals(nextStatus)) {
+            return ResponseEntity.badRequest().body("Status must be active or deactive");
+        }
+
+        cropListing.setStatus(nextStatus);
+        cropListing.setUpdatedAt(LocalDateTime.now());
+        cropListingRepository.save(cropListing);
+
+        return ResponseEntity.ok(cropListing);
+    }
+
 
     @PostMapping("/cropListing")
     public ResponseEntity<?> createCropListing(
