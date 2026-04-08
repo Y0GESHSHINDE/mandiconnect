@@ -76,6 +76,30 @@ public class FarmerEntryController {
         return ResponseEntity.ok(entries);
     }
 
+    @DeleteMapping("/delete/{entryId}")
+    public ResponseEntity<?> deleteEntry(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable String entryId
+    ) {
+        String token = authHeader.replace("Bearer", "").trim();
+        if (!jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("UNAUTHORIZED");
+        }
+
+        FarmerEntry entry = farmerEntryRepository.findById(entryId)
+                .orElseThrow(() -> new RuntimeException("Price entry not found"));
+
+        String requesterEmail = jwtUtil.getEmailFromToken(token);
+        String ownerEmail = entry.getFarmer() != null ? entry.getFarmer().getEmail() : null;
+
+        if (ownerEmail == null || !ownerEmail.equalsIgnoreCase(requesterEmail)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You can delete only your own price entry");
+        }
+
+        farmerEntryRepository.delete(entry);
+        return ResponseEntity.ok("Price entry deleted");
+    }
+
 
         /* =====================================================
            1️⃣ AGREE PRICE

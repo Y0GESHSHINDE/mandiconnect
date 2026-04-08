@@ -445,11 +445,10 @@ public class OrderService {
         String addressLine1 = normalizeOptionalValue(input != null ? input.addressLine1() : null);
         String city = firstNonBlank(input != null ? input.city() : null, buyerAddress != null ? buyerAddress.getCity() : null);
         String state = firstNonBlank(input != null ? input.state() : null, buyerAddress != null ? buyerAddress.getState() : null);
-        String country = firstNonBlank(input != null ? input.country() : null, buyerAddress != null ? buyerAddress.getCountry() : null);
+        String country = firstNonBlank(firstNonBlank(input != null ? input.country() : null, buyerAddress != null ? buyerAddress.getCountry() : null), "India");
 
         requireValue(contactName, "deliveryDetails.contactName");
         requireValue(contactPhone, "deliveryDetails.contactPhone");
-        requireValue(addressLine1, "deliveryDetails.addressLine1");
         requireValue(city, "deliveryDetails.city");
         requireValue(state, "deliveryDetails.state");
         requireValue(country, "deliveryDetails.country");
@@ -865,3 +864,5 @@ public class OrderService {
     ) {
     }
 }
+
+
