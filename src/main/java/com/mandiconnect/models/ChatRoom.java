@@ -11,6 +11,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +26,8 @@ import java.util.List;
         @CompoundIndex(name = "idx_chat_participant_updated", def = "{'participantKeys': 1, 'updatedAt': -1}")
 })
 public class ChatRoom {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     @Id
     private String id;
@@ -51,10 +54,10 @@ public class ChatRoom {
     private Integer unreadCountFarmer = 0;
 
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(IST_ZONE);
 
     @Builder.Default
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt = LocalDateTime.now(IST_ZONE);
 
     public enum ChatStatus {
         ACTIVE,

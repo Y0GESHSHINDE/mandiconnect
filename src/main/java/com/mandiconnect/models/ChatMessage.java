@@ -11,6 +11,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Data
 @NoArgsConstructor
@@ -23,6 +24,8 @@ import java.time.LocalDateTime;
         @CompoundIndex(name = "idx_chat_message_connection_created", def = "{'connectionId': 1, 'createdAt': 1}")
 })
 public class ChatMessage {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     @Id
     private String id;
@@ -43,7 +46,7 @@ public class ChatMessage {
     private LocalDateTime readAt;
 
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(IST_ZONE);
 
     public enum MessageType {
         TEXT,

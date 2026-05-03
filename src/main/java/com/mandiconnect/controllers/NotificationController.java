@@ -102,6 +102,49 @@ public class NotificationController {
         return ResponseEntity.ok(response);
     }
 
+    @DeleteMapping("/user/{userId}/{notificationId}")
+    public ResponseEntity<?> deleteSingleNotification(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable String userId,
+            @PathVariable String notificationId
+    ) {
+        authorizeOrThrow(authHeader, userId);
+
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
+                .orElse(null);
+
+        if (notification == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Notification not found");
+        }
+
+        notificationRepository.delete(notification);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("userId", userId);
+        response.put("notificationId", notificationId);
+        response.put("deleted", true);
+        response.put("deletedAt", LocalDateTime.now());
+
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/user/{userId}/all")
+    public ResponseEntity<?> deleteAllNotifications(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable String userId
+    ) {
+        authorizeOrThrow(authHeader, userId);
+
+        long deletedCount = notificationRepository.deleteByUserId(userId);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("userId", userId);
+        response.put("deletedCount", deletedCount);
+        response.put("deletedAt", LocalDateTime.now());
+
+        return ResponseEntity.ok(response);
+    }
+
     private void authorizeOrThrow(String authHeader, String userId) {
         try {
             notificationAccessService.assertUserAccess(authHeader, userId);

@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -43,6 +44,7 @@ public class ChatService {
 
     private static final int DEFAULT_HISTORY_SIZE = 50;
     private static final int MAX_HISTORY_SIZE = 100;
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -132,7 +134,7 @@ public class ChatService {
                 .text(messageText)
                 .referenceType(normalizeOptionalValue(referenceType))
                 .referenceId(normalizeOptionalValue(referenceId))
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(IST_ZONE))
                 .build());
 
         room.setLastMessageId(message.getId());
@@ -183,7 +185,7 @@ public class ChatService {
                 .referenceId(normalizeOptionalValue(referenceId))
                 .mediaUrl(mediaUrl)
                 .mediaPublicId(publicId)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(IST_ZONE))
                 .build());
 
         room.setLastMessageId(message.getId());
@@ -208,7 +210,7 @@ public class ChatService {
                 actor.userId()
         );
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(IST_ZONE);
         if (!unreadMessages.isEmpty()) {
             unreadMessages.forEach(message -> message.setReadAt(now));
             chatMessageRepository.saveAll(unreadMessages);
@@ -234,7 +236,7 @@ public class ChatService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chat room is not active");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(IST_ZONE);
         ChatMessage message = chatMessageRepository.save(ChatMessage.builder()
                 .chatId(room.getId())
                 .connectionId(room.getConnectionId())
@@ -281,7 +283,7 @@ public class ChatService {
             return synchronizedRoom;
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(IST_ZONE);
         ChatRoom room = ChatRoom.builder()
                 .connectionId(safeConnection.getId())
                 .participantKeys(new ArrayList<>(safeConnection.getParticipantKeys()))
@@ -375,7 +377,7 @@ public class ChatService {
         }
 
         if (changed) {
-            room.setUpdatedAt(LocalDateTime.now());
+            room.setUpdatedAt(LocalDateTime.now(IST_ZONE));
             return chatRoomRepository.save(room);
         }
 
@@ -400,8 +402,8 @@ public class ChatService {
                 .text("Connection accepted for " + label + ". You can start chatting now.")
                 .referenceType(primaryContext != null && primaryContext.getType() != null ? primaryContext.getType().name() : null)
                 .referenceId(primaryContext != null ? primaryContext.getRefId() : null)
-                .readAt(LocalDateTime.now())
-                .createdAt(LocalDateTime.now())
+                .readAt(LocalDateTime.now(IST_ZONE))
+                .createdAt(LocalDateTime.now(IST_ZONE))
                 .build());
     }
 
