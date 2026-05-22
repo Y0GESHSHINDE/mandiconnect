@@ -96,7 +96,7 @@ public class FarmerEntryController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You can delete only your own price entry");
         }
 
-        farmerEntryRepository.delete(entry);
+        farmerEntryService.deleteFarmerEntry(entry);
         return ResponseEntity.ok("Price entry deleted");
     }
 

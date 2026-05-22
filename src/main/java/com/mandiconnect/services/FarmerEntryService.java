@@ -11,9 +11,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -21,12 +27,167 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FarmerEntryService {
 
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
+    private static final int TREND_DAYS = 30;
+
     private final FarmerEntryRepository farmerEntryRepository;
     private final CropStatsRepository cropStatsRepository;
 
     @Transactional
     public FarmerEntry addFarmerEntry(FarmerEntry entry) {
-        // Validate and save entry
+        validateEntry(entry);
+
+        entry.setCreatedAt(now());
+        FarmerEntry savedEntry = farmerEntryRepository.save(entry);
+        recalculateStatsForCropAndMarket(savedEntry.getCrop(), savedEntry.getMarket());
+        return savedEntry;
+    }
+
+    @Transactional
+    public void deleteFarmerEntry(FarmerEntry entry) {
+        if (entry == null || entry.getId() == null || entry.getId().isBlank()) {
+            throw new IllegalArgumentException("Farmer entry is required for deletion");
+        }
+
+        Crops crop = entry.getCrop();
+        Market market = entry.getMarket();
+
+        farmerEntryRepository.delete(entry);
+
+        if (crop != null && market != null) {
+            recalculateStatsForCropAndMarket(crop, market);
+        }
+    }
+
+    @Transactional
+    public CropStats getStatsByCropAndMarket(Crops crop, Market market) {
+        validateCropAndMarket(crop, market);
+        return recalculateStatsForCropAndMarket(crop, market);
+    }
+
+    @Transactional
+    public List<CropStats> getStatsByCrop(Crops crop) {
+        if (crop == null || crop.getId() == null || crop.getId().isBlank()) {
+            throw new IllegalArgumentException("Crop is required");
+        }
+
+        Map<String, Market> marketsById = farmerEntryRepository.findAll().stream()
+                .filter(entry -> entry != null && entry.getCrop() != null && entry.getMarket() != null)
+                .filter(entry -> Objects.equals(entry.getCrop().getId(), crop.getId()))
+                .filter(entry -> entry.getMarket().getId() != null && !entry.getMarket().getId().isBlank())
+                .collect(Collectors.toMap(
+                        entry -> entry.getMarket().getId(),
+                        FarmerEntry::getMarket,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        if (marketsById.isEmpty()) {
+            return cropStatsRepository.findAllByCrop(crop);
+        }
+
+        List<CropStats> rebuiltStats = new ArrayList<>();
+        for (Market market : marketsById.values()) {
+            rebuiltStats.add(recalculateStatsForCropAndMarket(crop, market));
+        }
+        return rebuiltStats;
+    }
+
+    @Transactional
+    public List<CropStats> getStatsByMarket(Market market) {
+        if (market == null || market.getId() == null || market.getId().isBlank()) {
+            throw new IllegalArgumentException("Market is required");
+        }
+
+        Map<String, Crops> cropsById = farmerEntryRepository.findAll().stream()
+                .filter(entry -> entry != null && entry.getCrop() != null && entry.getMarket() != null)
+                .filter(entry -> Objects.equals(entry.getMarket().getId(), market.getId()))
+                .filter(entry -> entry.getCrop().getId() != null && !entry.getCrop().getId().isBlank())
+                .collect(Collectors.toMap(
+                        entry -> entry.getCrop().getId(),
+                        FarmerEntry::getCrop,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        if (cropsById.isEmpty()) {
+            return cropStatsRepository.findAllByMandi(market);
+        }
+
+        List<CropStats> rebuiltStats = new ArrayList<>();
+        for (Crops crop : cropsById.values()) {
+            rebuiltStats.add(recalculateStatsForCropAndMarket(crop, market));
+        }
+        return rebuiltStats;
+    }
+
+    @Transactional
+    public Map<String, Object> rebuildAllStats() {
+        List<FarmerEntry> allEntries = farmerEntryRepository.findAll();
+        cropStatsRepository.deleteAll();
+
+        Map<String, CropMarketRef> uniquePairs = new LinkedHashMap<>();
+        for (FarmerEntry entry : allEntries) {
+            if (entry == null || entry.getCrop() == null || entry.getMarket() == null) {
+                continue;
+            }
+
+            String cropId = entry.getCrop().getId();
+            String marketId = entry.getMarket().getId();
+            if (cropId == null || cropId.isBlank() || marketId == null || marketId.isBlank()) {
+                continue;
+            }
+
+            uniquePairs.putIfAbsent(cropId + ":" + marketId, new CropMarketRef(entry.getCrop(), entry.getMarket()));
+        }
+
+        int rebuiltCount = 0;
+        for (CropMarketRef pair : uniquePairs.values()) {
+            recalculateStatsForCropAndMarket(pair.crop(), pair.market());
+            rebuiltCount++;
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("entriesScanned", allEntries.size());
+        response.put("statsRebuilt", rebuiltCount);
+        response.put("rebuiltAt", now());
+        return response;
+    }
+
+    @Transactional
+    public CropStats recalculateStatsForCropAndMarket(Crops crop, Market market) {
+        validateCropAndMarket(crop, market);
+
+        List<FarmerEntry> allEntries = farmerEntryRepository.findByCropAndMarket(crop, market);
+        CropStats cropStats = cropStatsRepository.findByCropAndMandi(crop, market)
+                .orElseGet(() -> createNewCropStats(crop, market));
+
+        LocalDateTime currentTime = now();
+        LocalDateTime startOfToday = startOfToday();
+        LocalDateTime startOfTomorrow = startOfToday.plusDays(1);
+        LocalDateTime startOfSevenDayWindow = startOfToday.minusDays(6);
+
+        List<FarmerEntry> todayEntries = filterEntriesBetween(allEntries, startOfToday, startOfTomorrow);
+        List<FarmerEntry> weeklyEntries = filterEntriesBetween(allEntries, startOfSevenDayWindow, startOfTomorrow);
+
+        cropStats.setAllTimeStats(buildStats(allEntries, currentTime));
+        cropStats.setDailyStats(buildStats(todayEntries, currentTime));
+        cropStats.setWeeklyStats(buildStats(weeklyEntries, currentTime));
+        cropStats.setTrend(buildTrend(allEntries, startOfToday));
+
+        CropStats savedStats = cropStatsRepository.save(cropStats);
+        log.info(
+                "Recalculated stats for crop {} and market {}. allTime={}, daily={}, weekly={}",
+                crop.getId(),
+                market.getId(),
+                allEntries.size(),
+                todayEntries.size(),
+                weeklyEntries.size()
+        );
+        return savedStats;
+    }
+
+    private void validateEntry(FarmerEntry entry) {
         if (entry == null || entry.getCrop() == null || entry.getMarket() == null) {
             throw new IllegalArgumentException("Farmer entry must have crop and market information");
         }
@@ -34,175 +195,137 @@ public class FarmerEntryService {
         if (entry.getPrice() <= 0) {
             throw new IllegalArgumentException("Price must be greater than 0");
         }
-
-        FarmerEntry savedEntry = farmerEntryRepository.save(entry);
-        updateAllStatsTypes(savedEntry);
-        return savedEntry;
     }
 
-    @Transactional
-    protected void updateAllStatsTypes(FarmerEntry entry) {
-        Crops crop = entry.getCrop();
-        Market mandi = entry.getMarket();
-
-        if (crop == null || mandi == null) {
-            log.error("Crop or Market reference is null in FarmerEntry: {}", entry.getId());
-            return;
+    private void validateCropAndMarket(Crops crop, Market market) {
+        if (crop == null || crop.getId() == null || crop.getId().isBlank()) {
+            throw new IllegalArgumentException("Crop is required");
         }
 
-        String cropId = crop.getId();
-        String mandiId = mandi.getId();
-
-        try {
-            // Get or create CropStats - use DBRef objects for query
-            CropStats cropStats = cropStatsRepository.findByCropAndMandi(crop, mandi).orElseGet(() -> createNewCropStats(crop, mandi));
-
-            // 1. Update ALL-TIME Stats
-            updateAllTimeStats(cropStats, crop, mandi, entry);
-
-            // 2. Update DAILY Stats (last 24 hours)
-            updateDailyStats(cropStats, crop, mandi, entry);
-
-            // 3. Update WEEKLY Stats (last 7 days)
-            updateWeeklyStats(cropStats, crop, mandi, entry);
-
-            // 4. Update Trend (daily snapshot) - FIXED
-            updateTrend(cropStats, crop, mandi);
-
-            // Save updated CropStats
-            cropStatsRepository.save(cropStats);
-            log.info("Successfully updated all stats for crop: {} and mandi: {}", cropId, mandiId);
-
-        } catch (Exception e) {
-            log.error("Error updating stats for crop: {}, mandi: {}", cropId, mandiId, e);
-            throw new RuntimeException("Failed to update statistics", e);
+        if (market == null || market.getId() == null || market.getId().isBlank()) {
+            throw new IllegalArgumentException("Market is required");
         }
     }
 
-    private void updateAllTimeStats(CropStats cropStats, Crops crop, Market mandi, FarmerEntry entry) {
-        List<FarmerEntry> allEntries = farmerEntryRepository.findByCropAndMarket(crop, mandi);
-        updateStatsObject(cropStats.getAllTimeStats(), allEntries, "All-time");
+    private List<FarmerEntry> filterEntriesBetween(List<FarmerEntry> entries, LocalDateTime start, LocalDateTime end) {
+        return entries.stream()
+                .filter(Objects::nonNull)
+                .filter(entry -> entry.getCreatedAt() != null)
+                .filter(entry -> !entry.getCreatedAt().isBefore(start) && entry.getCreatedAt().isBefore(end))
+                .toList();
     }
 
-    private void updateDailyStats(CropStats cropStats, Crops crop, Market mandi, FarmerEntry entry) {
-        // Last 24 hours from now
-        LocalDateTime twentyFourHoursAgo = LocalDateTime.now().minusHours(24);
-        List<FarmerEntry> dailyEntries = farmerEntryRepository.findByCropAndMarketAndCreatedAtAfter(crop, mandi, twentyFourHoursAgo);
-
-        updateStatsObject(cropStats.getDailyStats(), dailyEntries, "Daily");
-    }
-
-    private void updateWeeklyStats(CropStats cropStats, Crops crop, Market mandi, FarmerEntry entry) {
-        // Last 7 days from now
-        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
-        List<FarmerEntry> weeklyEntries = farmerEntryRepository.findByCropAndMarketAndCreatedAtAfter(crop, mandi, sevenDaysAgo);
-
-        updateStatsObject(cropStats.getWeeklyStats(), weeklyEntries, "Weekly");
-    }
-
-    private void updateStatsObject(CropStats.Stats stats, List<FarmerEntry> entries, String statsType) {
-        if (entries.isEmpty()) {
-            stats.setAveragePrice(0);
-            stats.setMinPrice(0);
-            stats.setMaxPrice(0);
-            stats.setTotalFarmersContributed(0);
-            stats.setLastUpdated(LocalDateTime.now());
-            stats.setStale(false);
-            log.debug("{} stats: No entries found", statsType);
-            return;
+    private CropStats.Stats buildStats(List<FarmerEntry> entries, LocalDateTime updatedAt) {
+        if (entries == null || entries.isEmpty()) {
+            return CropStats.Stats.builder()
+                    .averagePrice(0)
+                    .minPrice(0)
+                    .maxPrice(0)
+                    .totalFarmersContributed(0)
+                    .lastUpdated(updatedAt)
+                    .isStale(true)
+                    .build();
         }
 
         double sum = entries.stream().mapToDouble(FarmerEntry::getPrice).sum();
         double min = entries.stream().mapToDouble(FarmerEntry::getPrice).min().orElse(0);
         double max = entries.stream().mapToDouble(FarmerEntry::getPrice).max().orElse(0);
-        double avg = sum / entries.size();
+        double average = sum / entries.size();
 
-        // Validate and handle NaN/Infinite values
-        if (Double.isNaN(avg) || Double.isInfinite(avg)) {
-            avg = 0;
-            log.warn("Invalid average calculation for {} stats, setting to 0", statsType);
+        if (Double.isNaN(average) || Double.isInfinite(average)) {
+            average = 0;
         }
 
-        stats.setAveragePrice(Math.round(avg * 100.0) / 100.0);
-        stats.setMinPrice(Math.round(min * 100.0) / 100.0);
-        stats.setMaxPrice(Math.round(max * 100.0) / 100.0);
-        stats.setTotalFarmersContributed(entries.size());
-        stats.setLastUpdated(LocalDateTime.now());
-        stats.setStale(false);
-
-        log.debug("{} stats updated - Avg: {}, Min: {}, Max: {}, Count: {}", statsType, avg, min, max, entries.size());
+        return CropStats.Stats.builder()
+                .averagePrice(roundPrice(average))
+                .minPrice(roundPrice(min))
+                .maxPrice(roundPrice(max))
+                .totalFarmersContributed(countUniqueFarmers(entries))
+                .lastUpdated(updatedAt)
+                .isStale(false)
+                .build();
     }
 
-    private void updateTrend(CropStats cropStats, Crops crop, Market mandi) {
-        LocalDateTime startOfToday = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime startOfTomorrow = startOfToday.plusDays(1);
+    private List<CropStats.Trend> buildTrend(List<FarmerEntry> entries, LocalDateTime startOfToday) {
+        LocalDate startDate = startOfToday.toLocalDate().minusDays(TREND_DAYS - 1L);
+        LocalDate endDate = startOfToday.toLocalDate();
 
-        // Get today's entries using exact date range
-        List<FarmerEntry> todayEntries = farmerEntryRepository.findByCropAndMarketAndCreatedAtBetween(crop, mandi, startOfToday, startOfTomorrow);
+        Map<LocalDate, List<FarmerEntry>> entriesByDate = entries.stream()
+                .filter(Objects::nonNull)
+                .filter(entry -> entry.getCreatedAt() != null)
+                .collect(Collectors.groupingBy(entry -> entry.getCreatedAt().toLocalDate()));
 
-        List<CropStats.Trend> trendList = cropStats.getTrend() != null ? new ArrayList<>(cropStats.getTrend()) : new ArrayList<>();
-
-        // Find today's trend or create new one
-        CropStats.Trend todayTrend = findOrCreateTodayTrend(trendList, startOfToday);
-
-        // Update today's trend with actual data
-        updateSingleTrend(todayTrend, todayEntries);
-
-        // Clean up old trends (keep only last 30 days)
-        trendList = cleanupOldTrends(trendList);
-
-        cropStats.setTrend(trendList);
-        log.debug("Trend updated for date: {}, Entries: {}", startOfToday.toLocalDate(), todayEntries.size());
+        List<CropStats.Trend> trend = new ArrayList<>();
+        for (LocalDate day = startDate; !day.isAfter(endDate); day = day.plusDays(1)) {
+            List<FarmerEntry> dayEntries = entriesByDate.getOrDefault(day, List.of());
+            trend.add(buildTrendPoint(day.atStartOfDay(), dayEntries));
+        }
+        return trend;
     }
 
-    private CropStats.Trend findOrCreateTodayTrend(List<CropStats.Trend> trendList, LocalDateTime startOfToday) {
-        return trendList.stream().filter(trend -> isSameDay(trend.getDate(), startOfToday)).findFirst().orElseGet(() -> {
-            CropStats.Trend newTrend = CropStats.Trend.builder().date(startOfToday).averagePrice(0).minPrice(0).maxPrice(0).farmersContributed(0).build();
-            trendList.add(newTrend);
-            log.info("Created new trend entry for date: {}", startOfToday.toLocalDate());
-            return newTrend;
-        });
-    }
-
-    private void updateSingleTrend(CropStats.Trend trend, List<FarmerEntry> entries) {
-        if (entries.isEmpty()) {
-            trend.setAveragePrice(0);
-            trend.setMinPrice(0);
-            trend.setMaxPrice(0);
-            trend.setFarmersContributed(0);
-            return;
+    private CropStats.Trend buildTrendPoint(LocalDateTime date, List<FarmerEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return CropStats.Trend.builder()
+                    .date(date)
+                    .averagePrice(0)
+                    .minPrice(0)
+                    .maxPrice(0)
+                    .farmersContributed(0)
+                    .build();
         }
 
         double sum = entries.stream().mapToDouble(FarmerEntry::getPrice).sum();
         double min = entries.stream().mapToDouble(FarmerEntry::getPrice).min().orElse(0);
         double max = entries.stream().mapToDouble(FarmerEntry::getPrice).max().orElse(0);
-        double avg = sum / entries.size();
+        double average = sum / entries.size();
 
-        trend.setAveragePrice(Math.round(avg * 100.0) / 100.0);
-        trend.setMinPrice(Math.round(min * 100.0) / 100.0);
-        trend.setMaxPrice(Math.round(max * 100.0) / 100.0);
-        trend.setFarmersContributed(entries.size());
+        if (Double.isNaN(average) || Double.isInfinite(average)) {
+            average = 0;
+        }
 
-        log.debug("Trend data updated - Avg: {}, Min: {}, Max: {}, Count: {}", avg, min, max, entries.size());
+        return CropStats.Trend.builder()
+                .date(date)
+                .averagePrice(roundPrice(average))
+                .minPrice(roundPrice(min))
+                .maxPrice(roundPrice(max))
+                .farmersContributed(countUniqueFarmers(entries))
+                .build();
     }
 
-    private List<CropStats.Trend> cleanupOldTrends(List<CropStats.Trend> trendList) {
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
-        return trendList.stream().filter(trend -> trend.getDate().isAfter(thirtyDaysAgo)).collect(Collectors.toList());
+    private int countUniqueFarmers(List<FarmerEntry> entries) {
+        Set<String> farmerIds = entries.stream()
+                .map(FarmerEntry::getFarmer)
+                .filter(Objects::nonNull)
+                .map(farmer -> farmer.getId())
+                .filter(Objects::nonNull)
+                .filter(id -> !id.isBlank())
+                .collect(Collectors.toSet());
+        return farmerIds.size();
     }
 
-    private boolean isSameDay(LocalDateTime date1, LocalDateTime date2) {
-        return date1.toLocalDate().equals(date2.toLocalDate());
+    private double roundPrice(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
-    private CropStats createNewCropStats(Crops crop, Market mandi) {
-        LocalDateTime now = LocalDateTime.now();
-        CropStats.Stats emptyStats = CropStats.Stats.builder().averagePrice(0).minPrice(0).maxPrice(0).totalFarmersContributed(0).lastUpdated(now).isStale(false).build();
-
-        return CropStats.builder().crop(crop)  // This will save as proper DBRef
-                .mandi(mandi) // This will save as proper DBRef
-                .allTimeStats(emptyStats).dailyStats(emptyStats).weeklyStats(emptyStats).trend(new ArrayList<>()).build();
+    private CropStats createNewCropStats(Crops crop, Market market) {
+        return CropStats.builder()
+                .crop(crop)
+                .mandi(market)
+                .allTimeStats(buildStats(List.of(), now()))
+                .dailyStats(buildStats(List.of(), now()))
+                .weeklyStats(buildStats(List.of(), now()))
+                .trend(new ArrayList<>())
+                .build();
     }
 
+    private LocalDateTime now() {
+        return LocalDateTime.now(IST_ZONE);
+    }
 
+    private LocalDateTime startOfToday() {
+        return LocalDate.now(IST_ZONE).atStartOfDay();
+    }
+
+    private record CropMarketRef(Crops crop, Market market) {
+    }
 }
