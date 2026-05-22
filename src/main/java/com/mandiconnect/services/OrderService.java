@@ -212,8 +212,7 @@ public class OrderService {
                 Order.OrderStatus.CONFIRMED,
                 Order.DeliveryStatus.SCHEDULED,
                 normalizedTransitionNote(note, "Order confirmed by farmer"),
-                Order.OrderStatus.PLACED,
-                Order.OrderStatus.PAID
+                Order.OrderStatus.PLACED
         );
         emitOrderConfirmedSideEffects(order);
         return order;
@@ -229,7 +228,8 @@ public class OrderService {
                 Order.OrderStatus.PROCESSING,
                 Order.DeliveryStatus.PACKED,
                 normalizedTransitionNote(note, "Order moved to processing"),
-                Order.OrderStatus.CONFIRMED
+                Order.OrderStatus.CONFIRMED,
+                Order.OrderStatus.PAID
         );
         emitOrderProcessingSideEffects(order);
         return order;
