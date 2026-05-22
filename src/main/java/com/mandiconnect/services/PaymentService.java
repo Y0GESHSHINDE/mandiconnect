@@ -385,13 +385,8 @@ public class PaymentService {
 
     private void validateOrderReadyForPayment(Order order) {
         Order.OrderStatus status = parseOrderStatus(order.getStatus());
-        if (status == Order.OrderStatus.CANCELLED
-                || status == Order.OrderStatus.COMPLETED
-                || status == Order.OrderStatus.CONFIRMED
-                || status == Order.OrderStatus.PROCESSING
-                || status == Order.OrderStatus.DISPATCHED
-                || status == Order.OrderStatus.DELIVERED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "This order is no longer eligible for payment creation");
+        if (status != Order.OrderStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only confirmed orders are eligible for payment creation");
         }
 
         if (Order.PaymentStatus.SUCCESS.name().equals(order.getPaymentStatus())) {
@@ -433,12 +428,30 @@ public class PaymentService {
         payment.setUpdatedAt(now);
         paymentTransactionRepository.save(payment);
 
-        order.setStatus(Order.OrderStatus.PLACED.name());
+        order.setStatus(resolveStatusAfterPaymentFailure(order).name());
         order.setPaymentStatus(Order.PaymentStatus.FAILED.name());
         order.setUpdatedAt(now);
         appendOrderEvent(order, Order.EventType.PAYMENT_FAILED, actor, normalizeOptionalValue(failureDescription), now);
         Order savedOrder = orderRepository.save(order);
         emitPaymentFailedSideEffects(savedOrder, payment, actor, failureDescription);
+    }
+
+    private Order.OrderStatus resolveStatusAfterPaymentFailure(Order order) {
+        if (order.getEvents() != null) {
+            for (int index = order.getEvents().size() - 1; index >= 0; index--) {
+                Order.OrderEvent event = order.getEvents().get(index);
+                if (event == null || event.getOrderStatus() == null || event.getOrderStatus().isBlank()) {
+                    continue;
+                }
+
+                Order.OrderStatus eventStatus = parseOrderStatus(event.getOrderStatus());
+                if (eventStatus == Order.OrderStatus.CONFIRMED || eventStatus == Order.OrderStatus.PLACED) {
+                    return eventStatus;
+                }
+            }
+        }
+
+        return Order.OrderStatus.CONFIRMED;
     }
 
     private void appendOrderEvent(
