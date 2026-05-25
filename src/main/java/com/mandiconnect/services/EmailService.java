@@ -43,6 +43,7 @@ public class EmailService {
             log.info("Verification email sent to farmer {}", toEmail);
         } catch (Exception ex) {
             log.error("Failed to send farmer verification email to {}", toEmail, ex);
+            System.err.println("Failed to send farmer verification email to " + toEmail + ": " + ex.getMessage());
         }
     }
 
@@ -74,6 +75,7 @@ public class EmailService {
             log.info("Verification email sent to buyer {}", toEmail);
         } catch (Exception ex) {
             log.error("Failed to send buyer verification email to {}", toEmail, ex);
+            System.err.println("Failed to send buyer verification email to " + toEmail + ": " + ex.getMessage());
         }
     }
 }
