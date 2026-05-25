@@ -1,30 +1,28 @@
 package com.mandiconnect.services;
 
-import jakarta.mail.internet.MimeMessage;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class EmailService {
 
-    @Autowired
-    private JavaMailSender mailSender;
+    private final BrevoEmailService brevoEmailService;
 
     @Value("${app.base-url}")
-    private String baseUrl; // Dynamic base URL
+    private String baseUrl;
 
     public void sendVerificationEmail(String toEmail, String token) {
         try {
             String subject = "MandiConnect - Verify Your Email";
             String link = baseUrl + "/farmer/verify?token=" + token;
 
-            // HTML Email Template
             String body = """
                     <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-                        <h2 style="color: #2E7D32;">Welcome to MandiConnect 🌾</h2>
+                        <h2 style="color: #2E7D32;">Welcome to MandiConnect ðŸŒ¾</h2>
                         <p>Dear Farmer,</p>
                         <p>Thank you for registering with <b>MandiConnect</b>. To complete your sign-up, please verify your email address by clicking the button below:</p>
                         
@@ -33,7 +31,7 @@ public class EmailService {
                            Verify Email
                         </a>
                         
-                        <p>If the button doesn’t work, copy and paste the following link into your browser:</p>
+                        <p>If the button doesnâ€™t work, copy and paste the following link into your browser:</p>
                         <p><a href="%s">%s</a></p>
                         
                         <br/>
@@ -41,19 +39,10 @@ public class EmailService {
                     </div>
                     """.formatted(link, link, link);
 
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
-
-            helper.setTo(toEmail);
-            helper.setSubject(subject);
-            helper.setText(body, true); // HTML content
-
-            mailSender.send(message);
-
-            System.out.println("📩 Verification email sent to: " + toEmail );
-
-        } catch (Exception e) {
-            System.out.println("❌ Failed to send email: " + e.getMessage());
+            brevoEmailService.sendHtmlEmail(toEmail, subject, body);
+            log.info("Verification email sent to farmer {}", toEmail);
+        } catch (Exception ex) {
+            log.error("Failed to send farmer verification email to {}", toEmail, ex);
         }
     }
 
@@ -62,10 +51,9 @@ public class EmailService {
             String subject = "MandiConnect - Verify Your Email";
             String link = baseUrl + "/buyer/verify?token=" + token;
 
-            // HTML Email Template
             String body = """
                     <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-                        <h2 style="color: #2E7D32;">Welcome to MandiConnect 🌾</h2>
+                        <h2 style="color: #2E7D32;">Welcome to MandiConnect ðŸŒ¾</h2>
                         <p>Dear Buyer,</p>
                         <p>Thank you for registering with <b>MandiConnect</b>. To complete your sign-up, please verify your email address by clicking the button below:</p>
                         
@@ -74,7 +62,7 @@ public class EmailService {
                            Verify Email
                         </a>
                         
-                        <p>If the button doesn’t work, copy and paste the following link into your browser:</p>
+                        <p>If the button doesnâ€™t work, copy and paste the following link into your browser:</p>
                         <p><a href="%s">%s</a></p>
                         
                         <br/>
@@ -82,19 +70,10 @@ public class EmailService {
                     </div>
                     """.formatted(link, link, link);
 
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
-
-            helper.setTo(toEmail);
-            helper.setSubject(subject);
-            helper.setText(body, true); // HTML content
-
-            mailSender.send(message);
-
-            System.out.println("📩 Verification email sent to: " + toEmail );
-
-        } catch (Exception e) {
-            System.out.println("❌ Failed to send email: " + e.getMessage());
+            brevoEmailService.sendHtmlEmail(toEmail, subject, body);
+            log.info("Verification email sent to buyer {}", toEmail);
+        } catch (Exception ex) {
+            log.error("Failed to send buyer verification email to {}", toEmail, ex);
         }
     }
 }
