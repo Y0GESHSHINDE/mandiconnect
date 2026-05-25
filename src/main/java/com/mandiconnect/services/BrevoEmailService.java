@@ -39,6 +39,8 @@ public class BrevoEmailService {
     public void sendHtmlEmail(String toEmail, String subject, String htmlContent) {
         validateConfiguration();
 
+        log.info("Sending email via Brevo to {} with subject '{}'", toEmail, subject);
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
@@ -54,15 +56,23 @@ public class BrevoEmailService {
         HttpEntity<BrevoSendEmailRequest> request = new HttpEntity<>(payload, headers);
 
         try {
-            ResponseEntity<Void> response = restTemplate.postForEntity(
+            ResponseEntity<BrevoSendEmailResponse> response = restTemplate.postForEntity(
                     normalizeBaseUrl() + "/smtp/email",
                     request,
-                    Void.class
+                    BrevoSendEmailResponse.class
             );
 
             if (!response.getStatusCode().is2xxSuccessful()) {
                 throw new IllegalStateException("Brevo email request failed with status " + response.getStatusCode().value());
             }
+
+            String messageId = response.getBody() != null ? response.getBody().messageId() : null;
+            log.info(
+                    "Brevo accepted email for {}. status={}, messageId={}",
+                    toEmail,
+                    response.getStatusCode().value(),
+                    messageId != null ? messageId : "N/A"
+            );
         } catch (RestClientResponseException ex) {
             throw new IllegalStateException(resolveErrorMessage(ex), ex);
         } catch (Exception ex) {
@@ -95,6 +105,9 @@ public class BrevoEmailService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record BrevoSendEmailResponse(String messageId) {
     }
 
     private record BrevoSendEmailRequest(
