@@ -228,7 +228,6 @@ public class OrderService {
                 Order.OrderStatus.PROCESSING,
                 Order.DeliveryStatus.PACKED,
                 normalizedTransitionNote(note, "Order moved to processing"),
-                Order.OrderStatus.CONFIRMED,
                 Order.OrderStatus.PAID
         );
         emitOrderProcessingSideEffects(order);
