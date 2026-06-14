@@ -186,6 +186,61 @@ public class PaymentService {
         return new PaymentVerificationResponse(false, order, payment, failureDescription);
     }
 
+    public PaymentResetResponse resetPaymentAttempt(String authenticatedEmail, String orderId, String outcome) {
+        Order order = getOrderForUpdate(orderId);
+        AuthenticatedUser actor = resolveOrderBuyer(order, authenticatedEmail);
+        LocalDateTime now = LocalDateTime.now();
+
+        PaymentTransaction payment = paymentTransactionRepository.findTopByOrderIdOrderByCreatedAtDesc(order.getId())
+                .orElse(null);
+
+        if (payment == null) {
+            return new PaymentResetResponse(false, order, null, "No payment attempt found to reset");
+        }
+
+        if (PaymentTransaction.TransactionStatus.SUCCESS.name().equals(payment.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This payment has already been completed");
+        }
+
+        if (!PaymentTransaction.TransactionStatus.INITIATED.name().equals(payment.getStatus())) {
+            return new PaymentResetResponse(false, order, payment, "No active payment attempt is pending");
+        }
+
+        String normalizedOutcome = normalizeOptionalValue(outcome);
+        boolean userCancelled = normalizedOutcome != null && normalizedOutcome.equalsIgnoreCase("CANCELLED");
+        String paymentStatus = userCancelled
+                ? PaymentTransaction.TransactionStatus.CANCELLED.name()
+                : PaymentTransaction.TransactionStatus.FAILED.name();
+
+        payment.setStatus(paymentStatus);
+        payment.setGatewayStatus(normalizeOptionalValue(payment.getGatewayStatus()));
+        payment.setFailureCode(userCancelled ? "USER_CANCELLED" : "PAYMENT_RESET");
+        payment.setFailureDescription(userCancelled ? "Payment was cancelled before completion" : "Payment did not complete");
+        payment.setVerifiedAt(now);
+        payment.setUpdatedAt(now);
+        PaymentTransaction savedPayment = paymentTransactionRepository.save(payment);
+
+        order.setStatus(Order.OrderStatus.CONFIRMED.name());
+        order.setPaymentStatus(Order.PaymentStatus.PENDING.name());
+        order.setUpdatedAt(now);
+        appendOrderEvent(
+                order,
+                Order.EventType.PAYMENT_FAILED,
+                actor,
+                userCancelled ? "Payment cancelled before completion" : "Payment failed before completion",
+                now
+        );
+        Order savedOrder = orderRepository.save(order);
+
+        if (!userCancelled) {
+            emitPaymentFailedSideEffects(savedOrder, savedPayment, actor, savedPayment.getFailureDescription());
+        }
+
+        return new PaymentResetResponse(true, savedOrder, savedPayment, userCancelled
+                ? "Payment attempt cancelled. You can retry from the order screen."
+                : "Payment attempt failed. You can retry from the order screen.");
+    }
+
     public OrderPaymentsResponse getPaymentsForOrder(String orderId, String authenticatedEmail) {
         Order order = getOrderForUpdate(orderId);
         authorizeOrderAccess(order, authenticatedEmail);
@@ -895,6 +950,14 @@ public class PaymentService {
 
     public record PaymentVerificationResponse(
             boolean verified,
+            Order order,
+            PaymentTransaction payment,
+            String message
+    ) {
+    }
+
+    public record PaymentResetResponse(
+            boolean reset,
             Order order,
             PaymentTransaction payment,
             String message

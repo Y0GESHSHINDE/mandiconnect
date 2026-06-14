@@ -85,8 +85,10 @@ public class OrderService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Crop listing price must be greater than 0");
         }
 
-        double unitPrice = listingPrice;
-        double subtotalAmount = unitPrice * orderedQuantity;
+        double agreedPrice = command.agreedPrice() != null
+                ? requirePositive(command.agreedPrice(), "agreedPrice")
+                : listingPrice;
+        double subtotalAmount = agreedPrice * orderedQuantity;
         String currency = normalizeOptionalValue(command.currency());
         if (currency == null) {
             currency = "INR";
@@ -127,10 +129,10 @@ public class OrderService {
                         .locationState(cropListing.getLocation() != null ? normalizeOptionalValue(cropListing.getLocation().getState()) : null)
                         .listedQuantity(cropListing.getQuantity())
                         .listedUnit(listedUnit)
-                        .listedPrice(unitPrice)
+                        .listedPrice(listingPrice)
                         .orderedQuantity(orderedQuantity)
                         .orderedUnit(orderedUnit)
-                        .agreedPrice(unitPrice)
+                        .agreedPrice(agreedPrice)
                         .build())
                 .deliveryDetails(deliveryDetails)
                 .notes(normalizeOptionalValue(command.notes()))
@@ -838,6 +840,7 @@ public class OrderService {
             Double quantity,
             String unit,
             String currency,
+            Double agreedPrice,
             String notes,
             DeliveryDetailsInput deliveryDetails
     ) {
