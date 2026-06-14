@@ -34,6 +34,7 @@ public class OrderController {
                         body.quantity(),
                         body.unit(),
                         body.currency(),
+                        body.agreedPrice(),
                         body.notes(),
                         body.deliveryDetails() == null
                                 ? null
@@ -182,6 +183,7 @@ public class OrderController {
             Double quantity,
             String unit,
             String currency,
+            Double agreedPrice,
             String notes,
             DeliveryDetailsRequest deliveryDetails
     ) {

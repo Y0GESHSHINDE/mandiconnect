@@ -61,6 +61,20 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getPaymentsForOrder(orderId, email));
     }
 
+    @PostMapping("/order/{orderId}/reset")
+    public ResponseEntity<?> resetPaymentAttempt(
+            @PathVariable String orderId,
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody(required = false) ResetPaymentAttemptRequest body
+    ) {
+        String email = extractAuthenticatedEmail(authHeader);
+        return ResponseEntity.ok(paymentService.resetPaymentAttempt(
+                email,
+                orderId,
+                body != null ? body.outcome() : null
+        ));
+    }
+
     private String extractAuthenticatedEmail(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid Authorization header");
@@ -85,5 +99,9 @@ public class PaymentController {
             String razorpayPaymentId,
             String razorpaySignature
     ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ResetPaymentAttemptRequest(String outcome) {
     }
 }
