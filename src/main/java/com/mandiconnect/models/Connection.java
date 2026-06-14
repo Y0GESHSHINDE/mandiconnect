@@ -11,6 +11,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -30,6 +31,8 @@ import java.util.stream.Collectors;
         @CompoundIndex(name = "idx_connection_context", def = "{'contexts.type': 1, 'contexts.refId': 1}")
 })
 public class Connection {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     @Id
     private String id;
@@ -62,13 +65,13 @@ public class Connection {
     private String chatId;
 
     @Builder.Default
-    private LocalDateTime requestedAt = LocalDateTime.now();
+    private LocalDateTime requestedAt = LocalDateTime.now(IST_ZONE);
 
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(IST_ZONE);
 
     @Builder.Default
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt = LocalDateTime.now(IST_ZONE);
 
     private LocalDateTime respondedAt;
     private LocalDateTime connectedAt;
@@ -250,6 +253,6 @@ public class Connection {
         private String photoUrl;
 
         @Builder.Default
-        private LocalDateTime addedAt = LocalDateTime.now();
+        private LocalDateTime addedAt = LocalDateTime.now(IST_ZONE);
     }
 }
