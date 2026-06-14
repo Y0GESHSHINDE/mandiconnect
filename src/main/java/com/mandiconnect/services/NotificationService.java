@@ -15,12 +15,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class NotificationService {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     private final NotificationRepository notificationRepository;
     private final FarmerRepository farmerRepository;
@@ -60,7 +63,7 @@ public class NotificationService {
                     .cropId(cropId)
                     .marketId(marketId)
                     .isRead(false)
-                    .createdAt(LocalDateTime.now())
+                    .createdAt(now())
                     .build();
 
             saveNotification(notification);
@@ -90,7 +93,7 @@ public class NotificationService {
                 .cropId(entry.getCrop().getId())
                 .marketId(entry.getMarket().getId())
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(now())
                 .build();
 
         saveNotification(notification);
@@ -119,7 +122,7 @@ public class NotificationService {
                 .cropId(entry.getCrop().getId())
                 .marketId(entry.getMarket().getId())
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(now())
                 .build();
 
         saveNotification(notification);
@@ -339,7 +342,7 @@ public class NotificationService {
                 .actorUserRole(actor.getUserType())
                 .actorName(actor.getDisplayName())
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(now())
                 .build();
 
         saveNotification(notification);
@@ -381,7 +384,7 @@ public class NotificationService {
                 .actorUserRole(actor != null && actor.getUserType() != null ? actor.getUserType().name() : null)
                 .actorName(actor != null ? actor.getDisplayName() : null)
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(now())
                 .build();
 
         saveNotification(notification);
@@ -417,7 +420,7 @@ public class NotificationService {
                 .actorUserRole(actor != null ? actor.getUserType() : null)
                 .actorName(actor != null ? actor.getDisplayName() : null)
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(now())
                 .build();
 
         saveNotification(notification);
@@ -553,6 +556,10 @@ public class NotificationService {
         } catch (Exception ex) {
             log.warn("Failed to deliver push notification for notification {}", saved.getId(), ex);
         }
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(IST_ZONE);
     }
 }
 

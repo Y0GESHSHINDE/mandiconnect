@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -32,6 +33,8 @@ import java.util.Set;
 @Slf4j
 @RequiredArgsConstructor
 public class ConnectionService {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     private final ConnectionRepository connectionRepository;
     private final BuyerRepository buyerRepository;
@@ -63,7 +66,7 @@ public class ConnectionService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sender and receiver cannot be the same user");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = now();
         Connection existingConnection = findExistingConnection(
                 sender.userId(),
                 sender.userType().name(),
@@ -120,7 +123,7 @@ public class ConnectionService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Requester cannot accept the same connection request");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = now();
         connection.setStatus(Connection.ConnectionStatus.ACCEPTED.name());
         connection.setActionByUserId(actor.userId());
         connection.setRespondedAt(now);
@@ -149,7 +152,7 @@ public class ConnectionService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Requester cannot reject the same connection request");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = now();
         connection.setStatus(Connection.ConnectionStatus.REJECTED.name());
         connection.setActionByUserId(actor.userId());
         connection.setRespondedAt(now);
@@ -509,7 +512,7 @@ public class ConnectionService {
         }
 
         if (changed) {
-            connection.setUpdatedAt(LocalDateTime.now());
+            connection.setUpdatedAt(now());
             connection.syncLegacyFields();
             return connectionRepository.save(connection);
         }
@@ -792,7 +795,7 @@ public class ConnectionService {
         }
 
         connection.setChatId(chatId);
-        connection.setUpdatedAt(LocalDateTime.now());
+        connection.setUpdatedAt(now());
         return connectionRepository.save(connection);
     }
 
@@ -894,6 +897,10 @@ public class ConnectionService {
         participantKeys.add(Connection.buildParticipantKey(secondUser.userId(), secondUser.userType().name()));
         participantKeys.sort(String::compareTo);
         return participantKeys;
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(IST_ZONE);
     }
 
     private List<Connection.ParticipantSnapshot> buildParticipants(AuthenticatedUser firstUser, AuthenticatedUser secondUser) {
